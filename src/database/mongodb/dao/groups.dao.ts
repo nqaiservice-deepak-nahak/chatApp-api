@@ -6,13 +6,16 @@ import { Model, Types } from 'mongoose';
 import { GroupMembers_Keys, Groups_Keys, IGroup, IGroupMember } from '../../schemas';
 import { AbstractGroupsDao } from '../abstract/groups.abstract';
 import { MongoConstants } from '../connection/constants.mongo';
+import { AbstractMessagesDao } from '../abstract/messages.abstract';
+import { currentDate } from '@app/core/utils/timestamp-util';
 
 @Injectable()
 export class GroupsDao implements AbstractGroupsDao {
   constructor(
     private readonly _loggerSvc: AppLogger,
     @Inject(MongoConstants.GROUPS_SCHEMA) private readonly _groupsSchema: Model<IGroup>,
-    @Inject(MongoConstants.GROUP_MEMBERS_SCHEMA) private readonly _groupMembersSchema: Model<IGroupMember>
+    @Inject(MongoConstants.GROUP_MEMBERS_SCHEMA) private readonly _groupMembersSchema: Model<IGroupMember>,
+    @Inject(AbstractMessagesDao) private readonly _messagesDao: AbstractMessagesDao
   ) { }
 
   //#region Create Group
@@ -50,9 +53,30 @@ export class GroupsDao implements AbstractGroupsDao {
       const groups = await this._groupsSchema.find({ [Groups_Keys.id]: { $in: groupIds } }).sort({ [Groups_Keys.CreatedOn]: -1 });
 
       const joinedAtByGroup = new Map(memberships.map((m) => [m[GroupMembers_Keys.GroupId].toString(), m[GroupMembers_Keys.JoinedAt]]));
-      const result = groups.map((g: any) => ({ ...g.toObject(), joinedAt: joinedAtByGroup.get(g._id.toString()) }));
+      const lastReadByGroup = new Map(memberships.map((m) => [m[GroupMembers_Keys.GroupId].toString(), m[GroupMembers_Keys.LastReadAt]]));
 
-      return createResponse(HttpStatus.OK, messages.S8, result);
+      // Enrich each group with unread data
+      const enrichedGroups = await Promise.all(groups.map(async (g: any) => {
+        const groupIdStr = g._id.toString();
+        // Fallback to joinedAt if lastReadAt is null (handles pre-migration data)
+        const since = lastReadByGroup.get(groupIdStr) ?? joinedAtByGroup.get(groupIdStr)!;
+
+        // Fetch unread count + last 3 messages
+        const [countRes, previewRes] = await Promise.all([
+          this._messagesDao.getUnreadCountForGroup(g._id, since),
+          this._messagesDao.getLastUnreadMessagesForGroup(g._id, since, 3)
+        ]);
+
+        return {
+          ...g.toObject(),
+          joinedAt: joinedAtByGroup.get(groupIdStr),
+          lastReadAt: lastReadByGroup.get(groupIdStr) ?? null,
+          unreadCount: countRes.data ?? 0,
+          unreadPreview: previewRes.data ?? []
+        };
+      }));
+
+      return createResponse(HttpStatus.OK, messages.S8, enrichedGroups);
     } catch (error) {
       this._loggerSvc.error(__filename, this.getMyGroups.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
@@ -98,7 +122,8 @@ export class GroupsDao implements AbstractGroupsDao {
       const member = new this._groupMembersSchema({
         [GroupMembers_Keys.GroupId]: groupId,
         [GroupMembers_Keys.UserId]: userId,
-        [GroupMembers_Keys.UserName]: userName
+        [GroupMembers_Keys.UserName]: userName,
+        [GroupMembers_Keys.LastReadAt]: currentDate()
       });
       await member.save();
       return createResponse(HttpStatus.CREATED, messages.S7, member);
@@ -122,4 +147,21 @@ export class GroupsDao implements AbstractGroupsDao {
     }
   }
   //#endregion Get Member Count
+
+
+  //#region Mark Group As Read
+  async markGroupAsRead(groupId: Types.ObjectId, userId: Types.ObjectId): Promise<AppResponse> {
+    try {
+      const updated = await this._groupMembersSchema.findOneAndUpdate(
+        { [GroupMembers_Keys.GroupId]: groupId, [GroupMembers_Keys.UserId]: userId },
+        { $set: { [GroupMembers_Keys.LastReadAt]: currentDate() } },
+        { new: true }
+      );
+      return createResponse(HttpStatus.OK, messages.S3, updated);
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.markGroupAsRead.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Mark Group As Read
 }

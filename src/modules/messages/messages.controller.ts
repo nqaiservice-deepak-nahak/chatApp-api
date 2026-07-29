@@ -35,4 +35,21 @@ export class MessagesController {
     return await this._messagesService.sendPrivateMessage(userId, body.message, claims);
   }
   //#endregion
+
+  //#region Get My Direct Conversations
+  @Get('messages/direct')
+  async getMyDirectConversations(@CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._messagesService.getMyDirectConversations(claims);
+  }
+  //#endregion
+
+  //#region Mark Direct Chat As Read
+  @Post('messages/direct/:otherUserId/mark-as-read')
+  async markDirectChatAsRead(
+    @Param('otherUserId') otherUserId: string,
+    @CurrentUser() claims: AtPayload
+  ): Promise<AppResponse> {
+    return await this._messagesService.markDirectChatAsRead(otherUserId, claims);
+  }
+  //#endregion
 }
