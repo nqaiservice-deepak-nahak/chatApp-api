@@ -6,7 +6,7 @@ import { messages } from '@app/shared/messages.shared';
 import { AtPayload } from '@app/shared/model.shared';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { CreateGroupDto } from './dto/groups.dto';
+import { AddGroupMembersDto, CreateGroupDto } from './dto/groups.dto';
 import { GroupsAbstractSvc } from './groups.abstract';
 
 @Injectable()
@@ -138,6 +138,57 @@ export class GroupsService implements GroupsAbstractSvc {
   }
   //#endregion Verify Membership
 
+  //#region Add Members to Existing Group
+  async addGroupMembers(groupId: string, dto: AddGroupMembersDto, claims: AtPayload): Promise<AppResponse> {
+    try {
+      if (!Types.ObjectId.isValid(groupId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+
+      // 1. Validate the group exists
+      const groupRes = await this._groupsDao.findGroupById(groupId);
+      if (groupRes.code !== HttpStatus.OK) return groupRes;
+
+      // 2. Validate the caller is actually a member of this group
+      const callerMembership = await this._groupsDao.isMember(
+        new Types.ObjectId(groupId),
+        new Types.ObjectId(claims.userId)
+      );
+      if (!callerMembership.data) return createResponse(HttpStatus.FORBIDDEN, messages.W9);
+
+      // 3. Dedupe + exclude the caller from being added to their own group
+      const uniqueIds = Array.from(new Set(dto.memberIds)).filter((id) => id !== claims.userId);
+
+      if (uniqueIds.length === 0) {
+        return createResponse(HttpStatus.OK, messages.S7, { added: 0, results: [] });
+      }
+
+      // 4. Try to add each member (same pattern as createGroup flow for consistency)
+      const groupObjectId = new Types.ObjectId(groupId);
+      const addPromises = uniqueIds.map(async (id) => {
+        if (!Types.ObjectId.isValid(id)) return { id, ok: false, reason: 'invalid id' };
+
+        const userRes = await this._authDao.findUserById(id);
+        if (userRes.code !== HttpStatus.OK) return { id, ok: false, reason: 'user not found' };
+
+        const name = userRes.data.name;
+        const res = await this._groupsDao.addMember(groupObjectId, new Types.ObjectId(id), name);
+        if (res.code === HttpStatus.CREATED) return { id, ok: true };
+        return { id, ok: false, reason: res.message || 'failed' };
+      });
+
+      const results = await Promise.all(addPromises);
+      const addedCount = results.filter((r) => r.ok).length;
+
+      return createResponse(
+        addedCount > 0 ? HttpStatus.CREATED : HttpStatus.OK,
+        addedCount > 0 ? messages.S7 : messages.S3,
+        { added: addedCount, results }
+      );
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.addGroupMembers.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Add Members to Existing Group
 
   //#region Mark Group As Read
   async markGroupAsRead(groupId: string, claims: AtPayload): Promise<AppResponse> {
