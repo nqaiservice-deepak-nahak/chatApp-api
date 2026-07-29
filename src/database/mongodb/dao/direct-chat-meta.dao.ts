@@ -305,13 +305,13 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
       const sentPartners = await messagesCollection
         .aggregate([
           { $match: { [Messages_Keys.MessageType]: 'private', [Messages_Keys.SenderId]: userId } },
-          { $group: { _id: `${Messages_Keys.ReceiverId}` } }
+          { $group: { _id: `$${Messages_Keys.ReceiverId}` } }
         ])
         .toArray();
       const receivedPartners = await messagesCollection
         .aggregate([
           { $match: { [Messages_Keys.MessageType]: 'private', [Messages_Keys.ReceiverId]: userId } },
-          { $group: { _id: `${Messages_Keys.SenderId}` } }
+          { $group: { _id: `$${Messages_Keys.SenderId}` } }
         ])
         .toArray();
 

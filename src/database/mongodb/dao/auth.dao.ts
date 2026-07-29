@@ -54,10 +54,11 @@ export class AuthDao implements AbstractAuthDao {
   //#endregion Create User
 
   //#region findAllUsersExcept
-  async findAllUsersExcept(userId: string): Promise<AppResponse> {
+  async findAllUsersExcept(userId: string, excludedIds: string[] = []): Promise<AppResponse> {
     try {
+      const idsToExclude = Array.from(new Set([userId, ...excludedIds]));
       const users = await this._userSchema
-        .find({ _id: { $ne: userId } })
+        .find({ _id: { $nin: idsToExclude } })
         .select('-hashedPassword')
         .lean();
 
