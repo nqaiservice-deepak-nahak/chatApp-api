@@ -1,6 +1,6 @@
 import { AppResponse } from '../../shared/app-response.shared';
 import { AtPayload } from '../../shared/model.shared';
-import { CreateGroupDto } from './dto/groups.dto';
+import { AddGroupMembersDto, CreateGroupDto } from './dto/groups.dto';
 
 export abstract class GroupsAbstractSvc {
   abstract createGroup(body: CreateGroupDto, claims: AtPayload): Promise<AppResponse>;
@@ -10,5 +10,7 @@ export abstract class GroupsAbstractSvc {
   abstract joinGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
   /** Internal helper used by the socket gateway to authorize room joins. */
   abstract verifyMembership(groupId: string, userId: string): Promise<AppResponse>;
+  /** Add one or more existing users to an already-created group; returns per-ID results. */
+  abstract addGroupMembers(groupId: string, dto: AddGroupMembersDto, claims: AtPayload): Promise<AppResponse>;
   abstract markGroupAsRead(groupId: string, claims: AtPayload): Promise<AppResponse>;
 }
