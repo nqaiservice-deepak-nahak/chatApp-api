@@ -12,7 +12,7 @@ import { GroupsAbstractSvc } from './groups.abstract';
 @Authorize()
 @ApiBearerAuth()
 export class GroupsController {
-  constructor(private readonly _groupsService: GroupsAbstractSvc) {}
+  constructor(private readonly _groupsService: GroupsAbstractSvc) { }
 
   //#region Create Group
   @Post()
@@ -48,4 +48,11 @@ export class GroupsController {
     return await this._groupsService.joinGroup(groupId, claims);
   }
   //#endregion Join Group
+
+  //#region Mark Group As Read
+  @Post(':groupId/mark-as-read')
+  async markGroupAsRead(@Param('groupId') groupId: string, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._groupsService.markGroupAsRead(groupId, claims);
+  }
+  //#endregion Mark Group As Read
 }

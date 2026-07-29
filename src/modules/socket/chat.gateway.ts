@@ -84,6 +84,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const roomName = this.getConversationRoomName(claims.userId, data.userId);
     client.join(roomName);
     client.emit('joinedPrivateChat', { roomName, otherUserId: data.userId });
+
+    try {
+      await this._messagesService.markDirectChatAsRead(data.userId, claims);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._loggerSvc.error(__filename, 'handleJoinPrivateChat', HttpStatus.INTERNAL_SERVER_ERROR, msg);
+    }
   }
   //#endregion
 
@@ -100,6 +107,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     client.join(data.groupId);
     client.emit('joinedGroup', { groupId: data.groupId });
+
+    try {
+      await this._groupsService.markGroupAsRead(data.groupId, claims);
+    } catch (err) {
+      // Log but don't block the join — non-critical
+      const msg = err instanceof Error ? err.message : String(err);
+      this._loggerSvc.error(__filename, 'handleJoinGroup', HttpStatus.INTERNAL_SERVER_ERROR, msg);
+    }
   }
   //#endregion Join Group Room
 

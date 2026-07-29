@@ -6,4 +6,17 @@ export abstract class AbstractMessagesDao {
   abstract createMessage(messageInfo: IMessage): Promise<AppResponse>;
   abstract getChatHistory(groupId: Types.ObjectId,joinedAt: string,offset: number,limit: number): Promise<AppResponse>;
   abstract getPrivateChatHistory(userId1: Types.ObjectId, userId2: Types.ObjectId): Promise<AppResponse>;
+  abstract getUnreadCountForGroup(groupId: Types.ObjectId, sinceTimestamp: string): Promise<AppResponse>;
+  abstract getLastUnreadMessagesForGroup(groupId: Types.ObjectId, sinceTimestamp: string, limit: number): Promise<AppResponse>;
+  abstract getUnreadCountForPrivateChat(
+    viewerId: Types.ObjectId,
+    otherId: Types.ObjectId,
+    sinceTimestamp: string
+  ): Promise<AppResponse>;
+  abstract getLastUnreadMessagesForPrivateChat(
+    viewerId: Types.ObjectId,
+    otherId: Types.ObjectId,
+    sinceTimestamp: string,
+    limit: number
+  ): Promise<AppResponse>;
 }

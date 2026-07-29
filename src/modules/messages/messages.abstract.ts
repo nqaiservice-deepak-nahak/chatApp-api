@@ -8,4 +8,6 @@ export abstract class MessagesAbstractSvc {
   abstract sendMessage(groupId: string, text: string, claims: AtPayload): Promise<AppResponse>;
   abstract getPrivateChatHistory(otherUserId: string, claims: AtPayload): Promise<AppResponse>;
   abstract sendPrivateMessage(receiverId: string, text: string, claims: AtPayload): Promise<AppResponse>;
+  abstract getMyDirectConversations(claims: AtPayload): Promise<AppResponse>;
+  abstract markDirectChatAsRead(otherUserId: string, claims: AtPayload): Promise<AppResponse>;
 }

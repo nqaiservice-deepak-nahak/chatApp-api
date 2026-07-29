@@ -1,5 +1,11 @@
 import { Connection } from 'mongoose';
-import { createGroupMembersSchema, createGroupsSchema, createMessagesSchema, createUsersSchema } from '../../schemas';
+import {
+  createDirectChatMetaSchema,
+  createGroupMembersSchema,
+  createGroupsSchema,
+  createMessagesSchema,
+  createUsersSchema
+} from '../../schemas';
 import { Collections } from './collections.mongo';
 import { MongoConstants } from './constants.mongo';
 
@@ -27,5 +33,11 @@ export const mongoDbModelsProvider = [
     useFactory: (connection: Connection) => createMessagesSchema(connection),
     inject: [MongoConstants.MONGO_DB_PROVIDER],
     modelNames: Collections.Messages
+  },
+  {
+    provide: MongoConstants.DIRECT_CHAT_META_SCHEMA,
+    useFactory: (connection: Connection) => createDirectChatMetaSchema(connection),
+    inject: [MongoConstants.MONGO_DB_PROVIDER],
+    modelNames: Collections.DirectChatMeta
   }
 ];

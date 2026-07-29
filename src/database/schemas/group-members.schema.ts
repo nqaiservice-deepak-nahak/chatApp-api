@@ -13,7 +13,8 @@ const enum GroupMembers_Keys {
   GroupId = 'groupId',
   UserId = 'userId',
   UserName = 'userName',
-  JoinedAt = 'joinedAt'
+  JoinedAt = 'joinedAt',
+  LastReadAt = 'lastReadAt'
 }
 //#endregion Keys
 
@@ -23,9 +24,10 @@ interface IGroupMember {
   [GroupMembers_Keys.UserId]: Types.ObjectId;
   [GroupMembers_Keys.UserName]: string;
   [GroupMembers_Keys.JoinedAt]: string;
+  [GroupMembers_Keys.LastReadAt]?: string; 
 }
 
-interface IGroupMembersModel extends IGroupMember, Document {}
+interface IGroupMembersModel extends IGroupMember, Document { }
 //#endregion Interfaces
 
 //#region Schema
@@ -33,7 +35,8 @@ const GroupMembersSchema = new Schema<IGroupMembersModel>({
   [GroupMembers_Keys.GroupId]: { type: SchemaTypes.ObjectId, ref: Collections.Groups, required: true },
   [GroupMembers_Keys.UserId]: { type: SchemaTypes.ObjectId, ref: Collections.Users, required: true },
   [GroupMembers_Keys.UserName]: { type: SchemaTypes.String, required: true },
-  [GroupMembers_Keys.JoinedAt]: { type: SchemaTypes.String, required: true, default: () => currentDate() }
+  [GroupMembers_Keys.JoinedAt]: { type: SchemaTypes.String, required: true, default: () => currentDate() },
+  [GroupMembers_Keys.LastReadAt]: { type: SchemaTypes.String, required: false }
 });
 //#endregion Schema
 

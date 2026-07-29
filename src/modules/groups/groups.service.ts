@@ -15,7 +15,7 @@ export class GroupsService implements GroupsAbstractSvc {
     private readonly _loggerSvc: AppLogger,
     private readonly _groupsDao: AbstractGroupsDao,
     private readonly _authDao: AbstractAuthDao
-  ) {}
+  ) { }
 
   //#region Create Group
   async createGroup(body: CreateGroupDto, claims: AtPayload): Promise<AppResponse> {
@@ -137,4 +137,27 @@ export class GroupsService implements GroupsAbstractSvc {
     }
   }
   //#endregion Verify Membership
+
+
+  //#region Mark Group As Read
+  async markGroupAsRead(groupId: string, claims: AtPayload): Promise<AppResponse> {
+    try {
+      if (!Types.ObjectId.isValid(groupId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+
+      const membershipRes = await this._groupsDao.isMember(
+        new Types.ObjectId(groupId),
+        new Types.ObjectId(claims.userId)
+      );
+      if (!membershipRes.data) return createResponse(HttpStatus.FORBIDDEN, messages.W9);
+
+      return await this._groupsDao.markGroupAsRead(
+        new Types.ObjectId(groupId),
+        new Types.ObjectId(claims.userId)
+      );
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.markGroupAsRead.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Mark Group As Read
 }
