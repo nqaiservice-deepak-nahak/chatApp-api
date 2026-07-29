@@ -17,6 +17,20 @@ export class GetChatHistoryDto {
   limit: number;
 }
 
+export class GetPrivateChatHistoryDto {
+  @IsMongoId()
+  otherUserId: string;
+
+  @IsInt()
+  @Min(0)
+  offset: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit: number;
+}
+
 class SendMessageDto {
   @ApiProperty()
   @IsNotEmpty({ message: messageFactory(messages.W2, ['Message']) })
