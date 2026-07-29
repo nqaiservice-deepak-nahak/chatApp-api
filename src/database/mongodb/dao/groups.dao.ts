@@ -5,6 +5,7 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import { GroupMembers_Keys, Groups_Keys, IGroup, IGroupMember } from '../../schemas';
 import { AbstractGroupsDao } from '../abstract/groups.abstract';
+import { Collections } from '../connection/collections.mongo';
 import { MongoConstants } from '../connection/constants.mongo';
 import { AbstractMessagesDao } from '../abstract/messages.abstract';
 import { currentDate } from '@app/core/utils/timestamp-util';
@@ -61,10 +62,10 @@ export class GroupsDao implements AbstractGroupsDao {
         // Fallback to joinedAt if lastReadAt is null (handles pre-migration data)
         const since = lastReadByGroup.get(groupIdStr) ?? joinedAtByGroup.get(groupIdStr)!;
 
-        // Fetch unread count + last 3 messages
+        // Fetch unread count + last 3 messages; exclude viewer's own sent msgs from count/preview
         const [countRes, previewRes] = await Promise.all([
-          this._messagesDao.getUnreadCountForGroup(g._id, since),
-          this._messagesDao.getLastUnreadMessagesForGroup(g._id, since, 3)
+          this._messagesDao.getUnreadCountForGroup(g._id, since, userId),
+          this._messagesDao.getLastUnreadMessagesForGroup(g._id, since, 3, userId)
         ]);
 
         return {
@@ -159,9 +160,63 @@ export class GroupsDao implements AbstractGroupsDao {
       );
       return createResponse(HttpStatus.OK, messages.S3, updated);
     } catch (error) {
-      this._loggerSvc.error(__filename, this.markGroupAsRead.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
+      this._loggerSvc.error(__filename, this.markGroupAsRead.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
     }
   }
   //#endregion Mark Group As Read
+
+  //#region Get Member User IDs (bulk helper for addGroupMembers dedupe)
+  async getMemberUserIds(groupId: Types.ObjectId): Promise<AppResponse> {
+    try {
+      const members = await this._groupMembersSchema
+        .find({ [GroupMembers_Keys.GroupId]: groupId })
+        .select(`${GroupMembers_Keys.UserId}`)
+        .exec();
+      const ids = members.map((m) => m[GroupMembers_Keys.UserId].toString());
+      return createResponse(HttpStatus.OK, messages.S3, ids);
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.getMemberUserIds.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion
+
+  //#region Get Available Members For Group
+  /** Users NOT in this group yet. Excludes the caller too. Used by the "Add Members" picker UI. */
+  async getAvailableMembersForGroup(groupId: Types.ObjectId, callerUserId: Types.ObjectId): Promise<AppResponse> {
+    try {
+      // 1. Existing members (include caller for completeness, then filter them too)
+      const memberRows = await this._groupMembersSchema
+        .find({ [GroupMembers_Keys.GroupId]: groupId })
+        .select(`${GroupMembers_Keys.UserId}`)
+        .exec();
+      const excludeIds = new Set<string>(memberRows.map((m) => m[GroupMembers_Keys.UserId].toString()));
+      excludeIds.add(callerUserId.toString());
+
+      // 2. Users collection: exclude member list + caller
+      const usersModel = this._groupMembersSchema.db.collection(Collections.Users);
+      const available = await usersModel
+        .find({
+          _id: { $nin: Array.from(excludeIds).map((s) => new Types.ObjectId(s)) }
+        })
+        .project({
+          [GroupMembers_Keys.UserName]: 1,
+          email: 1
+        })
+        .toArray();
+
+      // 3. Shape to match available-users convention
+      const result = available.map((u: any) => ({
+        id: u._id,
+        name: u[GroupMembers_Keys.UserName] ?? u.name,
+        email: u.email
+      }));
+      return createResponse(HttpStatus.OK, messages.S8, result);
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.getAvailableMembersForGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion
 }

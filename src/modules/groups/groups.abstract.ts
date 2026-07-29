@@ -13,4 +13,6 @@ export abstract class GroupsAbstractSvc {
   /** Add one or more existing users to an already-created group; returns per-ID results. */
   abstract addGroupMembers(groupId: string, dto: AddGroupMembersDto, claims: AtPayload): Promise<AppResponse>;
   abstract markGroupAsRead(groupId: string, claims: AtPayload): Promise<AppResponse>;
+  /** Return users NOT yet in the group (excludes caller) for the "Add Members" picker. */
+  abstract getAvailableMembersForGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
 }

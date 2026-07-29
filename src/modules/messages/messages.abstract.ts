@@ -10,4 +10,6 @@ export abstract class MessagesAbstractSvc {
   abstract sendPrivateMessage(receiverId: string, text: string, claims: AtPayload): Promise<AppResponse>;
   abstract getMyDirectConversations(claims: AtPayload): Promise<AppResponse>;
   abstract markDirectChatAsRead(otherUserId: string, claims: AtPayload): Promise<AppResponse>;
+  /** Combined chats endpoint: groups + private convos sorted by lastMessageAt descending. */
+  abstract getMyChats(claims: AtPayload): Promise<AppResponse>;
 }
