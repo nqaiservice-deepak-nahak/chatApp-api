@@ -49,6 +49,16 @@ export class GroupsController {
   }
   //#endregion Join Group
 
+  //#region Get Available Members For Group (users NOT yet in this group)
+  @Get(':groupId/available-members')
+  async getAvailableMembersForGroup(
+    @Param('groupId') groupId: string,
+    @CurrentUser() claims: AtPayload
+  ): Promise<AppResponse> {
+    return await this._groupsService.getAvailableMembersForGroup(groupId, claims);
+  }
+  //#endregion Get Available Members For Group
+
   //#region Add Members to Existing Group
   @Post(':groupId/members')
   async addGroupMembers(

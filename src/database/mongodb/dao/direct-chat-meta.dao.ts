@@ -287,4 +287,49 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
     }
   }
   //#endregion
+
+  //#region Get Existing Partner IDs (for filtering available users)
+  async getExistingPartnerIds(userId: Types.ObjectId): Promise<AppResponse> {
+    try {
+      // 1. Partners already tracked in DirectChatMeta
+      const metaRows = await this._metaSchema
+        .find({ [DirectChatMeta_Keys.UserId]: userId })
+        .select(`${DirectChatMeta_Keys.OtherUserId}`)
+        .exec();
+      const ids = new Set<string>(
+        metaRows.map((r) => r[DirectChatMeta_Keys.OtherUserId].toString())
+      );
+
+      // 2. Also scan Messages for partners before DirectChatMeta existed (historical data)
+      const messagesCollection = this._metaSchema.db.collection(Collections.Messages);
+      const sentPartners = await messagesCollection
+        .aggregate([
+          { $match: { [Messages_Keys.MessageType]: 'private', [Messages_Keys.SenderId]: userId } },
+          { $group: { _id: `${Messages_Keys.ReceiverId}` } }
+        ])
+        .toArray();
+      const receivedPartners = await messagesCollection
+        .aggregate([
+          { $match: { [Messages_Keys.MessageType]: 'private', [Messages_Keys.ReceiverId]: userId } },
+          { $group: { _id: `${Messages_Keys.SenderId}` } }
+        ])
+        .toArray();
+
+      for (const p of [...sentPartners, ...receivedPartners]) {
+        const idStr = p._id?.toString();
+        if (idStr) ids.add(idStr);
+      }
+
+      return createResponse(HttpStatus.OK, messages.S3, Array.from(ids));
+    } catch (error) {
+      this._loggerSvc.error(
+        __filename,
+        this.getExistingPartnerIds.name,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        (error as Error).stack
+      );
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion
 }
