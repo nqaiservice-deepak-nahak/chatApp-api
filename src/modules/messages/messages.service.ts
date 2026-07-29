@@ -1,6 +1,7 @@
 import AppLogger from '@app/core/loggers/app-logger';
 import { AbstractDirectChatMetaDao } from '@app/database/mongodb/abstract/direct-chat-meta.abstract';
 import { AbstractGroupsDao } from '@app/database/mongodb/abstract/groups.abstract';
+import { AbstractAuthDao } from '@app/database/mongodb/abstract/auth.abstract';
 import { AbstractMessagesDao } from '@app/database/mongodb/abstract/messages.abstract';
 import { AppResponse, createResponse } from '@app/shared/app-response.shared';
 import { messages } from '@app/shared/messages.shared';
@@ -18,6 +19,8 @@ export class MessagesService implements MessagesAbstractSvc {
     private readonly _messagesDao: AbstractMessagesDao,
     @Inject(AbstractGroupsDao)
     private readonly _groupsDao: AbstractGroupsDao,
+    @Inject(AbstractAuthDao)
+    private readonly _authDao: AbstractAuthDao,
     @Inject(AbstractDirectChatMetaDao)
     private readonly _directChatMetaDao: AbstractDirectChatMetaDao
   ) { }
@@ -115,6 +118,12 @@ export class MessagesService implements MessagesAbstractSvc {
         return createResponse(HttpStatus.BAD_REQUEST, 'You cannot send a message to yourself.');
       }
 
+      // Req 10: Verify the receiver actually exists before saving the message.
+      const receiverRes = await this._authDao.findUserById(receiverId);
+      if (receiverRes.code !== HttpStatus.OK) {
+        return createResponse(HttpStatus.NOT_FOUND, messages.W5);
+      }
+
       const sendRes = await this._messagesDao.createMessage({
         receiverId: new Types.ObjectId(receiverId),
         senderId: new Types.ObjectId(claims.userId),
@@ -172,6 +181,76 @@ export class MessagesService implements MessagesAbstractSvc {
       );
     } catch (error) {
       this._loggerSvc.error(__filename, this.markDirectChatAsRead.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion
+
+  //#region Combined "My Chats" — groups + private conversations merged & sorted by latest activity
+  /**
+   * Returns one unified list of:
+   *   - joined groups (type = 'group') with last-message preview + unreadCount
+   *   - existing private conversations (type = 'private') with last-message preview + unreadCount
+   * Sorted BY most recent lastMessageAt DESC (WhatsApp-style).
+   */
+  async getMyChats(claims: AtPayload): Promise<AppResponse> {
+    try {
+      const userId = new Types.ObjectId(claims.userId);
+      const [groupsRes, directRes] = await Promise.all([
+        this._groupsDao.getMyGroups(userId),
+        this._directChatMetaDao.getMyDirectConversations(userId)
+      ]);
+
+      // Normalize groups to chat-item shape
+      const groupItems: any[] = (groupsRes.data || []).map((g: any) => ({
+        chatType: 'group',
+        id: String(g._id || g.id),
+        name: g.name,
+        description: g.description || null,
+        createdBy: g.createdBy || null,
+        createdByName: g.createdByName || null,
+        createdOn: g.createdOn || null,
+        lastMessagePreview: g.unreadPreview?.length
+          ? g.unreadPreview[g.unreadPreview.length - 1]?.message ?? g.lastMessagePreview ?? null
+          : (g.lastMessagePreview ?? null),
+        lastMessageAt: g.lastMessageAt
+          ? g.lastMessageAt
+          : (g.unreadPreview?.length
+              ? g.unreadPreview[g.unreadPreview.length - 1]?.createdOn ?? g.lastReadAt ?? g.joinedAt ?? null
+              : (g.lastReadAt ?? g.joinedAt ?? null)),
+        unreadCount: g.unreadCount ?? 0,
+        unreadPreview: g.unreadPreview ?? [],
+        groupDetails: g
+      }));
+
+      // Normalize private conversations to chat-item shape
+      const privateItems: any[] = (directRes.data || []).map((c: any) => ({
+        chatType: 'private',
+        id: String(c.otherUserId),
+        name: c.otherUserName,
+        description: c.otherUserEmail || null,
+        lastMessagePreview: c.lastMessagePreview || null,
+        lastMessageAt: c.lastMessageAt || c.unreadPreview?.[c.unreadPreview.length - 1]?.createdOn || c.lastReadAt || null,
+        unreadCount: c.unreadCount ?? 0,
+        unreadPreview: c.unreadPreview ?? [],
+        directDetails: {
+          otherUserId: c.otherUserId,
+          otherUserName: c.otherUserName,
+          otherUserEmail: c.otherUserEmail
+        }
+      }));
+
+      // Merge + sort by most recent first (stable null/undefined goes to the bottom)
+      const merged = [...groupItems, ...privateItems];
+      merged.sort((a, b) => {
+        const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+        const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+        return tb - ta;
+      });
+
+      return createResponse(HttpStatus.OK, messages.S8, merged);
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.getMyChats.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
     }
   }
