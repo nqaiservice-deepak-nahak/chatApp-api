@@ -7,6 +7,7 @@ import { AtPayload } from '@app/shared/model.shared';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { MessagesAbstractSvc } from './messages.abstract';
+import { GetChatHistoryDto } from './dto/messages.dto';
 
 @Injectable()
 export class MessagesService implements MessagesAbstractSvc {
@@ -21,18 +22,39 @@ export class MessagesService implements MessagesAbstractSvc {
    * Enforces the core business rule: a member only sees messages sent on
    * or after the moment they joined this specific group.
    */
-  async getChatHistory(groupId: string, claims: AtPayload): Promise<AppResponse> {
+  async getChatHistory(dto: GetChatHistoryDto,claims: AtPayload): Promise<AppResponse> {
     try {
-      if (!Types.ObjectId.isValid(groupId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+      if (!Types.ObjectId.isValid(dto.groupId)) {
+        return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+      }
 
-      const membershipRes = await this._groupsDao.isMember(new Types.ObjectId(groupId), new Types.ObjectId(claims.userId));
-      if (!membershipRes.data) return createResponse(HttpStatus.FORBIDDEN, messages.W9);
+      const membershipRes = await this._groupsDao.isMember(
+        new Types.ObjectId(dto.groupId),
+        new Types.ObjectId(claims.userId),
+      );
 
-      const joinedAt = membershipRes.data.joinedAt;
-      return await this._messagesDao.getChatHistory(new Types.ObjectId(groupId), joinedAt);
+      if (!membershipRes.data) {
+        return createResponse(HttpStatus.FORBIDDEN, messages.W9);
+      }
+
+      return await this._messagesDao.getChatHistory(
+        new Types.ObjectId(dto.groupId),
+        membershipRes.data.joinedAt,
+        dto.offset,
+        dto.limit,
+      );
     } catch (error) {
-      this._loggerSvc.error(__filename, this.getChatHistory.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
-      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+      this._loggerSvc.error(
+        __filename,
+        this.getChatHistory.name,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        error.stack,
+      );
+
+      return createResponse(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        messages.E2,
+      );
     }
   }
   //#endregion Get Chat History

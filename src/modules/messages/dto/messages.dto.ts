@@ -1,6 +1,21 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { IsInt, IsMongoId, IsNotEmpty, IsString, Max, MaxLength, Min } from 'class-validator';
 import { messageFactory, messages } from '../../../shared/messages.shared';
+
+
+export class GetChatHistoryDto {
+  @IsMongoId()
+  groupId: string;
+
+  @IsInt()
+  @Min(0)
+  offset: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit: number;
+}
 
 class SendMessageDto {
   @ApiProperty()

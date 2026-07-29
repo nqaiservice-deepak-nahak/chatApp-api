@@ -1,5 +1,6 @@
 import AppLogger from '@app/core/loggers/app-logger';
 import { AbstractGroupsDao } from '@app/database/mongodb/abstract/groups.abstract';
+import { AbstractAuthDao } from '@app/database/mongodb/abstract/auth.abstract';
 import { AppResponse, createResponse } from '@app/shared/app-response.shared';
 import { messages } from '@app/shared/messages.shared';
 import { AtPayload } from '@app/shared/model.shared';
@@ -12,7 +13,8 @@ import { GroupsAbstractSvc } from './groups.abstract';
 export class GroupsService implements GroupsAbstractSvc {
   constructor(
     private readonly _loggerSvc: AppLogger,
-    private readonly _groupsDao: AbstractGroupsDao
+    private readonly _groupsDao: AbstractGroupsDao,
+    private readonly _authDao: AbstractAuthDao
   ) {}
 
   //#region Create Group
@@ -31,7 +33,27 @@ export class GroupsService implements GroupsAbstractSvc {
       const group: any = createRes.data;
       await this._groupsDao.addMember(group._id, new Types.ObjectId(claims.userId), claims.name);
 
-      return createResponse(HttpStatus.CREATED, messages.S6, group);
+      // Add any additional members provided in the DTO
+      const summary: { id: string; ok: boolean; reason?: string }[] = [];
+      if (body.memberIds && Array.isArray(body.memberIds) && body.memberIds.length) {
+        // dedupe and exclude creator
+        const uniqueIds = Array.from(new Set(body.memberIds)).filter((id) => id !== claims.userId);
+        const addPromises = uniqueIds.map(async (id) => {
+          if (!Types.ObjectId.isValid(id)) return { id, ok: false, reason: 'invalid id' };
+          const userRes = await this._authDao.findUserById(id);
+          if (userRes.code !== HttpStatus.OK) return { id, ok: false, reason: 'user not found' };
+          const name = userRes.data.name;
+          const res = await this._groupsDao.addMember(group._id, new Types.ObjectId(id), name);
+          if (res.code === HttpStatus.CREATED) return { id, ok: true };
+          // conflict (already member) or other error
+          return { id, ok: false, reason: res.message || 'failed' };
+        });
+
+        const results = await Promise.all(addPromises);
+        summary.push(...results);
+      }
+
+      return createResponse(HttpStatus.CREATED, messages.S6, { group, memberAddSummary: summary });
     } catch (error) {
       this._loggerSvc.error(__filename, this.createGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
