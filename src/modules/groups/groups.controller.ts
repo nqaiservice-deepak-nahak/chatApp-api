@@ -4,7 +4,7 @@ import { AtPayload } from '@app/shared/model.shared';
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
-import { CreateGroupDto } from './dto/groups.dto';
+import { AddGroupMembersDto, CreateGroupDto } from './dto/groups.dto';
 import { GroupsAbstractSvc } from './groups.abstract';
 
 @Controller('groups')
@@ -48,6 +48,17 @@ export class GroupsController {
     return await this._groupsService.joinGroup(groupId, claims);
   }
   //#endregion Join Group
+
+  //#region Add Members to Existing Group
+  @Post(':groupId/members')
+  async addGroupMembers(
+    @Param('groupId') groupId: string,
+    @Body() dto: AddGroupMembersDto,
+    @CurrentUser() claims: AtPayload
+  ): Promise<AppResponse> {
+    return await this._groupsService.addGroupMembers(groupId, dto, claims);
+  }
+  //#endregion Add Members to Existing Group
 
   //#region Mark Group As Read
   @Post(':groupId/mark-as-read')

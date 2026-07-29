@@ -24,4 +24,14 @@ class CreateGroupDto {
   readonly memberIds?: string[];
 }
 
-export { CreateGroupDto };
+class AddGroupMembersDto {
+  @ApiProperty({ type: [String] })
+  @IsNotEmpty({ message: messageFactory(messages.W2, ['memberIds']) })
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(100)
+  @IsMongoId({ each: true })
+  readonly memberIds: string[];
+}
+
+export { AddGroupMembersDto, CreateGroupDto };
