@@ -1,10 +1,12 @@
 import { AppConfig, AppConfigService } from '@app/config/app-config.service';
 import AppLogger from '@app/core/loggers/app-logger';
 import { AbstractAuthDao } from '@app/database/mongodb/abstract/auth.abstract';
+import { AbstractDirectChatMetaDao } from '@app/database/mongodb/abstract/direct-chat-meta.abstract';
 import { AppResponse, createResponse } from '@app/shared/app-response.shared';
 import { messages } from '@app/shared/messages.shared';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { AuthAbstractSvc } from './auth.abstract';
 import { LoginDto, RegisterDto } from './dto/auth.dto';
@@ -14,6 +16,7 @@ export class AuthService implements AuthAbstractSvc {
   constructor(
     private readonly _loggerSvc: AppLogger,
     private readonly _authDao: AbstractAuthDao,
+    private readonly _directChatMetaDao: AbstractDirectChatMetaDao,
     private readonly _jwtService: JwtService,
     private readonly _appConfigSvc: AppConfigService
   ) { }
@@ -87,7 +90,12 @@ export class AuthService implements AuthAbstractSvc {
   //#region getAvailableUsers
   async getAvailableUsers(userId: string): Promise<AppResponse> {
     try {
-      return await this._authDao.findAllUsersExcept(userId);
+      const existingPartnersRes = await this._directChatMetaDao.getExistingPartnerIds(new Types.ObjectId(userId));
+      const excludedIds = Array.isArray(existingPartnersRes.data) ? existingPartnersRes.data : [];
+      // Always exclude self too
+      excludedIds.push(userId);
+
+      return await this._authDao.findAllUsersExcept(userId, excludedIds);
     } catch (error) {
       this._loggerSvc.error(__filename, this.getAvailableUsers.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
