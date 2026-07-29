@@ -6,7 +6,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
 import { MessagesAbstractSvc } from './messages.abstract';
 
-@Controller('groups/:groupId/messages')
+@Controller()
 @ApiTags('Messages')
 @Authorize()
 @ApiBearerAuth()
@@ -14,7 +14,7 @@ export class MessagesController {
   constructor(private readonly _messagesService: MessagesAbstractSvc) { }
 
   //#region Get Chat History
-  @Get()
+  @Get('groups/:groupId/messages')
   async getChatHistory(@Param('groupId') groupId: string, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
     return await this._messagesService.getChatHistory(groupId, claims);
   }
