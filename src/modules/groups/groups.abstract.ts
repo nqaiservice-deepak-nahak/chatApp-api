@@ -10,4 +10,5 @@ export abstract class GroupsAbstractSvc {
   abstract joinGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
   /** Internal helper used by the socket gateway to authorize room joins. */
   abstract verifyMembership(groupId: string, userId: string): Promise<AppResponse>;
+  abstract markGroupAsRead(groupId: string, claims: AtPayload): Promise<AppResponse>;
 }

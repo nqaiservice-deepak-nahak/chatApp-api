@@ -4,4 +4,5 @@ export class MongoConstants {
   static readonly GROUPS_SCHEMA = 'GROUPS_SCHEMA';
   static readonly GROUP_MEMBERS_SCHEMA = 'GROUP_MEMBERS_SCHEMA';
   static readonly MESSAGES_SCHEMA = 'MESSAGES_SCHEMA';
+  static readonly DIRECT_CHAT_META_SCHEMA = 'DIRECT_CHAT_META_SCHEMA';
 }
