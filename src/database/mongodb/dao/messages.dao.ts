@@ -33,19 +33,25 @@ export class MessagesDao implements AbstractMessagesDao {
    * on/after their own `joinedAt` timestamp for that group. Every caller
    * passes in the member's own joinedAt value from GroupMembers.
    */
-  async getChatHistory(groupId: Types.ObjectId, joinedAt: string): Promise<AppResponse> {
+  async getChatHistory(groupId: Types.ObjectId,joinedAt: string,offset: number,limit: number): Promise<AppResponse> {
     try {
       const history = await this._messagesSchema
         .find({
           [Messages_Keys.GroupId]: groupId,
-          [Messages_Keys.CreatedOn]: { $gte: joinedAt }
+          [Messages_Keys.CreatedOn]: {
+            $gte: joinedAt,
+          },
         })
-        .sort({ [Messages_Keys.CreatedOn]: 1 });
+        .sort({
+          [Messages_Keys.CreatedOn]: -1,
+        })
+        .skip(offset)
+        .limit(limit);
 
-      return createResponse(HttpStatus.OK, messages.S10, history);
+      return createResponse(HttpStatus.OK,messages.S10,history.reverse());
     } catch (error) {
-      this._loggerSvc.error(__filename, this.getChatHistory.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
-      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+      this._loggerSvc.error(__filename,this.getChatHistory.name,HttpStatus.INTERNAL_SERVER_ERROR,error.stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR,messages.E2);
     }
   }
   //#endregion Get Chat History
