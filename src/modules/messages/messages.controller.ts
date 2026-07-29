@@ -5,7 +5,7 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
 import { MessagesAbstractSvc } from './messages.abstract';
-import { GetChatHistoryDto } from './dto/messages.dto';
+import { GetChatHistoryDto, GetPrivateChatHistoryDto } from './dto/messages.dto';
 
 @Controller()
 @ApiTags('Messages')
@@ -23,9 +23,9 @@ export class MessagesController {
 
 
   //#region get Private Chat History
-  @Get('messages/private/:userId')
-  async getPrivateChatHistory(@Param('userId') userId: string, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
-    return await this._messagesService.getPrivateChatHistory(userId, claims);
+  @Post('messages/private-history')
+  async getPrivateChatHistory(@Body() dto: GetPrivateChatHistoryDto, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._messagesService.getPrivateChatHistory(dto, claims);
   }
   //#endregion
 

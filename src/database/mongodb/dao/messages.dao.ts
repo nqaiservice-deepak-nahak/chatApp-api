@@ -57,7 +57,7 @@ export class MessagesDao implements AbstractMessagesDao {
   //#endregion Get Chat History
 
   //#region get Private Chat History
-  async getPrivateChatHistory(userId1: Types.ObjectId, userId2: Types.ObjectId): Promise<AppResponse> {
+  async getPrivateChatHistory(userId1: Types.ObjectId, userId2: Types.ObjectId, offset: number, limit: number): Promise<AppResponse> {
     try {
       const history = await this._messagesSchema
         .find({
@@ -67,7 +67,9 @@ export class MessagesDao implements AbstractMessagesDao {
             { [Messages_Keys.SenderId]: userId2, [Messages_Keys.ReceiverId]: userId1 }
           ]
         })
-        .sort({ [Messages_Keys.CreatedOn]: 1 });
+        .sort({ [Messages_Keys.CreatedOn]: 1 })
+        .skip(offset)
+        .limit(limit);
 
       return createResponse(HttpStatus.OK, messages.S10, history);
     } catch (error) {

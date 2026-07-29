@@ -8,7 +8,7 @@ import { AtPayload } from '@app/shared/model.shared';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { MessagesAbstractSvc } from './messages.abstract';
-import { GetChatHistoryDto } from './dto/messages.dto';
+import { GetChatHistoryDto, GetPrivateChatHistoryDto } from './dto/messages.dto';
 
 @Injectable()
 export class MessagesService implements MessagesAbstractSvc {
@@ -89,13 +89,15 @@ export class MessagesService implements MessagesAbstractSvc {
 
 
   //#region  getPrivateChatHistory
-  async getPrivateChatHistory(otherUserId: string, claims: AtPayload): Promise<AppResponse> {
+  async getPrivateChatHistory(dto: GetPrivateChatHistoryDto, claims: AtPayload): Promise<AppResponse> {
     try {
-      if (!Types.ObjectId.isValid(otherUserId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+      if (!Types.ObjectId.isValid(dto.otherUserId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
 
       return await this._messagesDao.getPrivateChatHistory(
         new Types.ObjectId(claims.userId),
-        new Types.ObjectId(otherUserId)
+        new Types.ObjectId(dto.otherUserId),
+        dto.offset,
+        dto.limit
       );
     } catch (error) {
       this._loggerSvc.error(__filename, this.getPrivateChatHistory.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
