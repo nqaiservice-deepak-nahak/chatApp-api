@@ -100,13 +100,16 @@ export class GroupsDao implements AbstractGroupsDao {
   }
   //#endregion Get My Groups
 
-  //#region Get Available Groups (groups the user has NOT joined)
+  //#region Get Available Groups (groups the user has NOT joined — only PUBLIC groups)
   async getAvailableGroups(userId: Types.ObjectId): Promise<AppResponse> {
     try {
       const memberships = await this._groupMembersSchema.find({ [GroupMembers_Keys.UserId]: userId });
       const joinedGroupIds = memberships.map((m) => m[GroupMembers_Keys.GroupId]);
       const groups = await this._groupsSchema
-        .find({ [Groups_Keys.id]: { $nin: joinedGroupIds } })
+        .find({
+          [Groups_Keys.id]: { $nin: joinedGroupIds },
+          [Groups_Keys.Type]: 'public'
+        })
         .sort({ [Groups_Keys.CreatedOn]: -1 });
 
       return createResponse(HttpStatus.OK, messages.S8, groups);
@@ -116,6 +119,27 @@ export class GroupsDao implements AbstractGroupsDao {
     }
   }
   //#endregion Get Available Groups
+
+  //#region Search Public Groups (by name, not joined yet)
+  async searchPublicGroups(userId: Types.ObjectId, query: string): Promise<AppResponse> {
+    try {
+      const memberships = await this._groupMembersSchema.find({ [GroupMembers_Keys.UserId]: userId });
+      const joinedGroupIds = memberships.map((m) => m[GroupMembers_Keys.GroupId]);
+      const groups = await this._groupsSchema
+        .find({
+          [Groups_Keys.id]: { $nin: joinedGroupIds },
+          [Groups_Keys.Type]: 'public',
+          [Groups_Keys.Name]: { $regex: query, $options: 'i' }
+        })
+        .sort({ [Groups_Keys.CreatedOn]: -1 });
+
+      return createResponse(HttpStatus.OK, messages.S8, groups);
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.searchPublicGroups.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Search Public Groups
 
   //#region Check Membership
   async isMember(groupId: Types.ObjectId, userId: Types.ObjectId): Promise<AppResponse> {
@@ -261,4 +285,31 @@ export class GroupsDao implements AbstractGroupsDao {
     }
   }
   //#endregion Delete Group
+
+  //#region Transfer Group Ownership
+  async transferGroupOwnership(
+    groupId: Types.ObjectId,
+    newOwnerId: Types.ObjectId,
+    newOwnerName: string
+  ): Promise<AppResponse> {
+    try {
+      const updated = await this._groupsSchema.findOneAndUpdate(
+        { [Groups_Keys.id]: groupId },
+        {
+          $set: {
+            [Groups_Keys.CreatedBy]: newOwnerId,
+            [Groups_Keys.CreatedByName]: newOwnerName
+          }
+        },
+        { new: true }
+      );
+
+      if (!updated) return createResponse(HttpStatus.NOT_FOUND, messages.W5, null);
+      return createResponse(HttpStatus.OK, messages.S13, updated);
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.transferGroupOwnership.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Transfer Group Ownership
 }

@@ -1,10 +1,10 @@
 import { Authorize } from '@app/core/decorators/authorization.decorator';
 import { CurrentUser } from '@app/core/decorators/current-user.decorator';
 import { AtPayload } from '@app/shared/model.shared';
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
-import { AddGroupMembersDto, CreateGroupDto } from './dto/groups.dto';
+import { AddGroupMembersDto, CreateGroupDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
 import { GroupsAbstractSvc } from './groups.abstract';
 
 @Controller('groups')
@@ -34,6 +34,16 @@ export class GroupsController {
     return await this._groupsService.getAvailableGroups(claims);
   }
   //#endregion Get Available Groups
+
+  //#region Search Public Groups
+  @Post('search')
+  async searchPublicGroups(
+    @Body() body: SearchPublicGroupsDto,
+    @CurrentUser() claims: AtPayload
+  ): Promise<AppResponse> {
+    return await this._groupsService.searchPublicGroups(body, claims);
+  }
+  //#endregion Search Public Groups
 
   //#region Get Group Details
   @Get(':groupId')
@@ -83,4 +93,15 @@ export class GroupsController {
     return await this._groupsService.deleteGroup(groupId, claims);
   }
   //#endregion Delete Group
+
+  //#region Transfer Group Ownership
+  @Post(':groupId/transfer-ownership')
+  async transferGroupOwnership(
+    @Param('groupId') groupId: string,
+    @Body() body: TransferGroupOwnershipDto,
+    @CurrentUser() claims: AtPayload
+  ): Promise<AppResponse> {
+    return await this._groupsService.transferGroupOwnership(groupId, body, claims);
+  }
+  //#endregion Transfer Group Ownership
 }
