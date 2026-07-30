@@ -51,16 +51,6 @@ export class MessageContentDto {
   @IsString({ message: messageFactory(messages.W1, ['text']) })
   @MaxLength(4000, { message: messageFactory(messages.W4, ['Message text', '4000']) })
   text?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString({ message: messageFactory(messages.W1, ['imagePath']) })
-  imagePath?: string;
-
-  @ApiProperty({ required: false })
-  @IsOptional()
-  @IsString({ message: messageFactory(messages.W1, ['files']) })
-  files?: string;
 }
 
 export class SendMessageDto {

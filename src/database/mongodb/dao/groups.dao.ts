@@ -70,15 +70,25 @@ export class GroupsDao implements AbstractGroupsDao {
         // Fetch unread count + last 3 messages; exclude viewer's own sent msgs from count/preview
         const [countRes, previewRes] = await Promise.all([
           this._messagesDao.getUnreadCountForGroup(this._groupChatId(groupIdStr), since, userId),
-          this._messagesDao.getLastUnreadMessagesForGroup(this._groupChatId(groupIdStr), since, 3, userId)
+          this._messagesDao.getLastUnreadMessagesForGroup(this._groupChatId(groupIdStr), since, 3, userId),
         ]);
+
+        // The chat list also needs a preview after every message has been read.
+        // `message` remains encrypted here; MessagesService decrypts it only
+        // when shaping the chat-list response.
+        const latestMessage = await this._messagesSchema
+          .findOne({ [Messages_Keys.ChatId]: this._groupChatId(groupIdStr) })
+          .sort({ [Messages_Keys.CreatedOn]: -1 })
+          .select({ [Messages_Keys.Message]: 1, [Messages_Keys.CreatedOn]: 1 })
+          .lean();
 
         return {
           ...g.toObject(),
           joinedAt: joinedAtByGroup.get(groupIdStr),
           lastReadAt: lastReadByGroup.get(groupIdStr) ?? null,
           unreadCount: countRes.data ?? 0,
-          unreadPreview: previewRes.data ?? []
+          unreadPreview: previewRes.data ?? [],
+          lastMessage: latestMessage ?? null
         };
       }));
 
@@ -239,7 +249,9 @@ export class GroupsDao implements AbstractGroupsDao {
 
       await Promise.all([
         this._groupMembersSchema.deleteMany({ [GroupMembers_Keys.GroupId]: groupId }),
-        this._messagesSchema.deleteMany({ [Messages_Keys.GroupId]: groupId })
+        this._messagesSchema.deleteMany({
+          [Messages_Keys.ChatId]: this._groupChatId(groupId.toString())
+        })
       ]);
 
       return createResponse(HttpStatus.OK, messages.S12, { groupId: groupId.toString() });

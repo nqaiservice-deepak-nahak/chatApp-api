@@ -22,11 +22,6 @@ const enum Messages_Keys {
  * are reserved for upcoming attachment support, but the object shape is already
  * in place so clients/consumers don't need another breaking change later.
  */
-interface IMessageContent {
-  text: string;
-  imagePath?: string;
-  files?: string;
-}
 
 interface IMessage {
   [Messages_Keys.ChatId]: string;
@@ -34,25 +29,15 @@ interface IMessage {
   [Messages_Keys.ReceiverId]?: Types.ObjectId;
   [Messages_Keys.SenderId]: Types.ObjectId;
   [Messages_Keys.SenderName]: string;
-  [Messages_Keys.Message]: IMessageContent;
+  [Messages_Keys.Message]: string;
   [Messages_Keys.MessageType]: "group" | "private";
   [Messages_Keys.CreatedOn]: string;
 }
 
-interface IMessagesModel extends IMessage, Document {}
+interface IMessagesModel extends IMessage, Document { }
 //#endregion Interfaces
 
 //#region Schema
-/** Sub-document for message content. Only `text` is used today; `imagePath`/`files`
- * are here so the shape doesn't need another migration once attachments ship. */
-const MessageContentSchema = new Schema<IMessageContent>(
-  {
-    text: { type: SchemaTypes.String, required: false, default: "" },
-    imagePath: { type: SchemaTypes.String, required: false, default: "" },
-    files: { type: SchemaTypes.String, required: false, default: "" },
-  },
-  { _id: false },
-);
 
 const MessagesSchema = new Schema<IMessagesModel>({
   [Messages_Keys.GroupId]: {
@@ -75,7 +60,7 @@ const MessagesSchema = new Schema<IMessagesModel>({
     required: true,
   },
   [Messages_Keys.SenderName]: { type: SchemaTypes.String, required: true },
-  [Messages_Keys.Message]: { type: MessageContentSchema, required: true },
+  [Messages_Keys.Message]: { type: SchemaTypes.String, required: true },
   [Messages_Keys.MessageType]: {
     type: SchemaTypes.String,
     required: true,
@@ -104,10 +89,9 @@ MessagesSchema.pre("validate", function (next) {
   }
 
   const content = msg[Messages_Keys.Message];
-  const hasContent =
-    !!content?.text?.trim() || !!content?.imagePath?.trim() || !!content?.files?.trim();
-  if (!hasContent) {
-    next(new Error(`message content (text, imagePath, or files) is required`));
+
+  if (!content?.trim()) {
+    next(new Error('message is required'));
     return;
   }
 
@@ -157,7 +141,6 @@ const createMessagesSchema = (conn: Connection) =>
 export {
   createMessagesSchema,
   IMessage,
-  IMessageContent,
   IMessagesModel,
   Messages_Keys,
   MessagesSchema,

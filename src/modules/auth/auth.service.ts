@@ -48,6 +48,7 @@ export class AuthService implements AuthAbstractSvc {
   //#region Login
   async login(loginInfo: LoginDto): Promise<AppResponse> {
     try {
+
       const userRes = await this._authDao.findUserByEmail(loginInfo.email);
       if (userRes.code !== HttpStatus.OK) return createResponse(HttpStatus.UNAUTHORIZED, messages.W7);
 
@@ -61,8 +62,9 @@ export class AuthService implements AuthAbstractSvc {
         secret: accessTokenSecret,
         expiresIn: accessTokenExpiresIn as any
       });
+      const { aes_key } = this._appConfigSvc.get(AppConfig.AES_KEY);
 
-      return createResponse(HttpStatus.OK, messages.S5, { accessToken, user: this._toSafeUser(user) });
+      return createResponse(HttpStatus.OK, messages.S5, { accessToken,aesKey:aes_key, user: this._toSafeUser(user) });
     } catch (error) {
       this._loggerSvc.error(__filename, this.login.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);

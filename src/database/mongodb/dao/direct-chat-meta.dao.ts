@@ -260,9 +260,7 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
             otherUserName: userInfo.name,
             otherUserEmail: userInfo.email,
             lastReadAt: null, // never opened → no read mark yet
-            lastMessagePreview: lastMsg
-              ? String(lastMsg[Messages_Keys.Message]?.text || '').slice(0, 100)
-              : null,
+            lastMessagePreview: lastMsg ? '[Encrypted message]' : null,
             lastMessageAt: lastMsg ? lastMsg[Messages_Keys.CreatedOn] : null,
             unreadCount: countRes.data ?? 0,
             unreadPreview: previewRes.data ?? []
