@@ -7,6 +7,8 @@ export abstract class AbstractGroupsDao {
   abstract findGroupById(groupId: string): Promise<AppResponse>;
   abstract getMyGroups(userId: Types.ObjectId): Promise<AppResponse>;
   abstract getAvailableGroups(userId: Types.ObjectId): Promise<AppResponse>;
+  /** Search public groups by name, excluding groups the user has already joined. */
+  abstract searchPublicGroups(userId: Types.ObjectId, query: string): Promise<AppResponse>;
   abstract isMember(groupId: Types.ObjectId, userId: Types.ObjectId): Promise<AppResponse>;
   abstract addMember(groupId: Types.ObjectId, userId: Types.ObjectId, userName: string): Promise<AppResponse>;
   abstract getMemberCount(groupId: Types.ObjectId): Promise<AppResponse>;
@@ -16,4 +18,10 @@ export abstract class AbstractGroupsDao {
   /** Returns users not yet in this group, to choose from when adding members. */
   abstract getAvailableMembersForGroup(groupId: Types.ObjectId, callerUserId: Types.ObjectId): Promise<AppResponse>;
   abstract deleteGroup(groupId: Types.ObjectId, creatorId: Types.ObjectId): Promise<AppResponse>;
+  /** Atomically update createdBy / createdByName for a group. */
+  abstract transferGroupOwnership(
+    groupId: Types.ObjectId,
+    newOwnerId: Types.ObjectId,
+    newOwnerName: string
+  ): Promise<AppResponse>;
 }

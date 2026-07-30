@@ -6,7 +6,7 @@ import { messages } from '@app/shared/messages.shared';
 import { AtPayload } from '@app/shared/model.shared';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { AddGroupMembersDto, CreateGroupDto } from './dto/groups.dto';
+import { AddGroupMembersDto, CreateGroupDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
 import { GroupsAbstractSvc } from './groups.abstract';
 
 @Injectable()
@@ -23,6 +23,7 @@ export class GroupsService implements GroupsAbstractSvc {
       const createRes = await this._groupsDao.createGroup({
         name: body.name.trim(),
         description: body.description?.trim() || '',
+        type: (body.type as any) || 'public',
         createdBy: new Types.ObjectId(claims.userId),
         createdByName: claims.name,
         createdOn: undefined as any
@@ -82,6 +83,21 @@ export class GroupsService implements GroupsAbstractSvc {
     }
   }
   //#endregion Get Available Groups
+
+//#region Search Public Groups
+  async searchPublicGroups(body: SearchPublicGroupsDto, claims: AtPayload): Promise<AppResponse> {
+    try {
+      const searchTerm = body.searchData.trim();
+      if (!searchTerm) {
+        return createResponse(HttpStatus.OK, messages.S8, []);
+      }
+      return await this._groupsDao.searchPublicGroups(new Types.ObjectId(claims.userId), searchTerm);
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.searchPublicGroups.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Search Public Groups
 
   //#region Get Group Details
   async getGroupDetails(groupId: string, claims: AtPayload): Promise<AppResponse> {
@@ -147,12 +163,10 @@ export class GroupsService implements GroupsAbstractSvc {
       const groupRes = await this._groupsDao.findGroupById(groupId);
       if (groupRes.code !== HttpStatus.OK) return groupRes;
 
-      // 2. Validate the caller is actually a member of this group
-      const callerMembership = await this._groupsDao.isMember(
-        new Types.ObjectId(groupId),
-        new Types.ObjectId(claims.userId)
-      );
-      if (!callerMembership.data) return createResponse(HttpStatus.FORBIDDEN, messages.W9);
+      // 2. Validate the caller IS THE CREATOR of this group (only creator can add members)
+      if (groupRes.data.createdBy.toString() !== claims.userId) {
+        return createResponse(HttpStatus.FORBIDDEN, messages.W13);
+      }
 
       // 3. Dedupe + exclude the caller from being added to their own group
       const uniqueIds = Array.from(new Set(dto.memberIds)).filter((id) => id !== claims.userId);
@@ -261,4 +275,51 @@ export class GroupsService implements GroupsAbstractSvc {
     }
   }
   //#endregion Delete Group
+
+  //#region Transfer Group Ownership
+  async transferGroupOwnership(
+    groupId: string,
+    body: TransferGroupOwnershipDto,
+    claims: AtPayload
+  ): Promise<AppResponse> {
+    try {
+      if (!Types.ObjectId.isValid(groupId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+
+      // Prevent transferring ownership to yourself
+      if (body.newOwnerUserId === claims.userId) {
+        return createResponse(HttpStatus.BAD_REQUEST, messages.W1);
+      }
+
+      // 1. Group must exist
+      const groupRes = await this._groupsDao.findGroupById(groupId);
+      if (groupRes.code !== HttpStatus.OK) return groupRes;
+
+      // 2. Caller must be the current creator / owner
+      if (groupRes.data.createdBy.toString() !== claims.userId) {
+        return createResponse(HttpStatus.FORBIDDEN, messages.W13);
+      }
+
+      const groupObjectId = new Types.ObjectId(groupId);
+      const newOwnerObjectId = new Types.ObjectId(body.newOwnerUserId);
+
+      // 3. New owner must be a member of the group first
+      const targetMembership = await this._groupsDao.isMember(groupObjectId, newOwnerObjectId);
+      if (!targetMembership.data) return createResponse(HttpStatus.BAD_REQUEST, messages.W14);
+
+      // 4. Resolve new owner's name (to keep createdByName in sync)
+      const userRes = await this._authDao.findUserById(body.newOwnerUserId);
+      if (userRes.code !== HttpStatus.OK) return userRes;
+
+      // 5. Apply ownership transfer
+      return await this._groupsDao.transferGroupOwnership(
+        groupObjectId,
+        newOwnerObjectId,
+        userRes.data.name
+      );
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.transferGroupOwnership.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Transfer Group Ownership
 }
