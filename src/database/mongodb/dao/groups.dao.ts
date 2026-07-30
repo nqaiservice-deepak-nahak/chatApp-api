@@ -3,7 +3,7 @@ import { AppResponse, createResponse } from '@app/shared/app-response.shared';
 import { messages } from '@app/shared/messages.shared';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
-import { GroupMembers_Keys, Groups_Keys, IGroup, IGroupMember } from '../../schemas';
+import { GroupMembers_Keys, Groups_Keys, IGroup, IGroupMember, IMessage, Messages_Keys } from '../../schemas';
 import { AbstractGroupsDao } from '../abstract/groups.abstract';
 import { Collections } from '../connection/collections.mongo';
 import { MongoConstants } from '../connection/constants.mongo';
@@ -16,6 +16,7 @@ export class GroupsDao implements AbstractGroupsDao {
     private readonly _loggerSvc: AppLogger,
     @Inject(MongoConstants.GROUPS_SCHEMA) private readonly _groupsSchema: Model<IGroup>,
     @Inject(MongoConstants.GROUP_MEMBERS_SCHEMA) private readonly _groupMembersSchema: Model<IGroupMember>,
+    @Inject(MongoConstants.MESSAGES_SCHEMA) private readonly _messagesSchema: Model<IMessage>,
     @Inject(AbstractMessagesDao) private readonly _messagesDao: AbstractMessagesDao
   ) { }
 
@@ -219,4 +220,29 @@ export class GroupsDao implements AbstractGroupsDao {
     }
   }
   //#endregion
+
+  //#region Delete Group
+  async deleteGroup(groupId: Types.ObjectId, creatorId: Types.ObjectId): Promise<AppResponse> {
+    try {
+      const deletedGroup = await this._groupsSchema.findOneAndDelete({
+        [Groups_Keys.id]: groupId,
+        [Groups_Keys.CreatedBy]: creatorId
+      });
+
+      if (!deletedGroup) {
+        return createResponse(HttpStatus.FORBIDDEN, messages.W13);
+      }
+
+      await Promise.all([
+        this._groupMembersSchema.deleteMany({ [GroupMembers_Keys.GroupId]: groupId }),
+        this._messagesSchema.deleteMany({ [Messages_Keys.GroupId]: groupId })
+      ]);
+
+      return createResponse(HttpStatus.OK, messages.S12, { groupId: groupId.toString() });
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.deleteGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Delete Group
 }

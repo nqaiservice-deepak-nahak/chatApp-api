@@ -15,4 +15,5 @@ export abstract class AbstractGroupsDao {
   abstract getMemberUserIds(groupId: Types.ObjectId): Promise<AppResponse>;
   /** Returns users not yet in this group, to choose from when adding members. */
   abstract getAvailableMembersForGroup(groupId: Types.ObjectId, callerUserId: Types.ObjectId): Promise<AppResponse>;
+  abstract deleteGroup(groupId: Types.ObjectId, creatorId: Types.ObjectId): Promise<AppResponse>;
 }

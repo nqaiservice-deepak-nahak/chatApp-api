@@ -236,4 +236,29 @@ export class GroupsService implements GroupsAbstractSvc {
     }
   }
   //#endregion Mark Group As Read
+
+  //#region Delete Group
+  async deleteGroup(groupId: string, claims: AtPayload): Promise<AppResponse> {
+    try {
+      if (!Types.ObjectId.isValid(groupId)) {
+        return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+      }
+
+      const groupRes = await this._groupsDao.findGroupById(groupId);
+      if (groupRes.code !== HttpStatus.OK) return groupRes;
+
+      if (groupRes.data.createdBy.toString() !== claims.userId) {
+        return createResponse(HttpStatus.FORBIDDEN, messages.W13);
+      }
+
+      return await this._groupsDao.deleteGroup(
+        new Types.ObjectId(groupId),
+        new Types.ObjectId(claims.userId)
+      );
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.deleteGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Delete Group
 }
