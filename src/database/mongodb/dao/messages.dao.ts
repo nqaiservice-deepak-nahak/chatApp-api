@@ -35,17 +35,27 @@ export class MessagesDao implements AbstractMessagesDao {
    *
    * Pagination: Returns { items, hasMore, nextOffset } with items in chronological order.
    */
-  async getChatHistory(groupId: Types.ObjectId,joinedAt: string,offset: number,limit: number): Promise<AppResponse> {
+  async getChatHistory(chatId: string, joinedAt: string, offset: number, limit: number): Promise<AppResponse> {
     try {
-      // Fetch limit+1 so we can detect if another page exists without a separate count() query.
+      return await this.getChatHistoryByChatId(chatId, joinedAt, offset, limit);
+    } catch (error) {
+      this._loggerSvc.error(__filename,this.getChatHistory.name,HttpStatus.INTERNAL_SERVER_ERROR,(error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR,messages.E2);
+    }
+  }
+
+  async getChatHistoryByChatId(chatId: string, joinedAt: string, offset: number, limit: number): Promise<AppResponse> {
+    try {
       const fetchLimit = Math.min(limit + 1, 101);
+      const query: Record<string, any> = {
+        [Messages_Keys.ChatId]: chatId,
+        [Messages_Keys.CreatedOn]: {
+          $gte: joinedAt,
+        },
+      };
+
       const raw = await this._messagesSchema
-        .find({
-          [Messages_Keys.GroupId]: groupId,
-          [Messages_Keys.CreatedOn]: {
-            $gte: joinedAt,
-          },
-        })
+        .find(query)
         .sort({
           [Messages_Keys.CreatedOn]: -1,
         })
@@ -54,30 +64,26 @@ export class MessagesDao implements AbstractMessagesDao {
 
       const hasMore = raw.length > limit;
       const sliced = hasMore ? raw.slice(0, limit) : raw;
-      // Reverse because internal DESC sort → chronological output (oldest first).
       const items = sliced.reverse();
       const nextOffset = hasMore ? offset + limit : null;
 
-      return createResponse(HttpStatus.OK,messages.S10,{ items, hasMore, nextOffset });
+      return createResponse(HttpStatus.OK, messages.S10, { items, hasMore, nextOffset });
     } catch (error) {
-      this._loggerSvc.error(__filename,this.getChatHistory.name,HttpStatus.INTERNAL_SERVER_ERROR,(error as Error).stack);
-      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR,messages.E2);
+      this._loggerSvc.error(__filename, this.getChatHistoryByChatId.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
     }
   }
   //#endregion Get Chat History
 
   //#region get Private Chat History
   /** Pagination: Returns { items, hasMore, nextOffset }; items in chronological order. */
-  async getPrivateChatHistory(userId1: Types.ObjectId, userId2: Types.ObjectId, offset: number, limit: number): Promise<AppResponse> {
+  async getPrivateChatHistory(chatId: string, offset: number, limit: number): Promise<AppResponse> {
     try {
       const fetchLimit = Math.min(limit + 1, 101);
       const raw = await this._messagesSchema
         .find({
+          [Messages_Keys.ChatId]: chatId,
           [Messages_Keys.MessageType]: 'private',
-          $or: [
-            { [Messages_Keys.SenderId]: userId1, [Messages_Keys.ReceiverId]: userId2 },
-            { [Messages_Keys.SenderId]: userId2, [Messages_Keys.ReceiverId]: userId1 }
-          ]
         })
         .sort({ [Messages_Keys.CreatedOn]: -1 })   // NEWEST first internally
         .skip(offset)
@@ -96,12 +102,22 @@ export class MessagesDao implements AbstractMessagesDao {
   }
   //#endregion
 
+  async getPrivateChatHistoryByChatId(chatId: string, offset: number, limit: number): Promise<AppResponse> {
+    try {
+      return await this.getPrivateChatHistory(chatId, offset, limit);
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.getPrivateChatHistoryByChatId.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion
+
     //#region Get Unread Count For Group
   /** Excludes messages sent by `viewerId` so the caller never sees their own msgs as unread. */
-  async getUnreadCountForGroup(groupId: Types.ObjectId, sinceTimestamp: string, viewerId?: Types.ObjectId): Promise<AppResponse> {
+  async getUnreadCountForGroup(chatId: string, sinceTimestamp: string, viewerId?: Types.ObjectId): Promise<AppResponse> {
     try {
       const filter: Record<string, any> = {
-        [Messages_Keys.GroupId]: groupId,
+        [Messages_Keys.ChatId]: chatId,
         [Messages_Keys.CreatedOn]: { $gt: sinceTimestamp }
       };
       if (viewerId) {
@@ -118,10 +134,10 @@ export class MessagesDao implements AbstractMessagesDao {
 
   //#region Get Last Unread Messages For Group
   /** Excludes messages sent by `viewerId` so the caller never sees their own msgs as unread. */
-  async getLastUnreadMessagesForGroup(groupId: Types.ObjectId, sinceTimestamp: string, limit: number, viewerId?: Types.ObjectId): Promise<AppResponse> {
+  async getLastUnreadMessagesForGroup(chatId: string, sinceTimestamp: string, limit: number, viewerId?: Types.ObjectId): Promise<AppResponse> {
     try {
       const filter: Record<string, any> = {
-        [Messages_Keys.GroupId]: groupId,
+        [Messages_Keys.ChatId]: chatId,
         [Messages_Keys.CreatedOn]: { $gt: sinceTimestamp }
       };
       if (viewerId) {
@@ -143,20 +159,16 @@ export class MessagesDao implements AbstractMessagesDao {
 
   //#region Get Unread Count For Private Chat
   async getUnreadCountForPrivateChat(
+    chatId: string,
     viewerId: Types.ObjectId,
-    otherId: Types.ObjectId,
     sinceTimestamp: string
   ): Promise<AppResponse> {
     try {
-      // Count only messages SENT BY the other user (viewer's own sent messages don't count as unread)
       const count = await this._messagesSchema.countDocuments({
+        [Messages_Keys.ChatId]: chatId,
         [Messages_Keys.MessageType]: 'private',
-        [Messages_Keys.SenderId]: otherId,
         [Messages_Keys.CreatedOn]: { $gt: sinceTimestamp },
-        $or: [
-          { [Messages_Keys.ReceiverId]: viewerId },
-          { [Messages_Keys.SenderId]: viewerId }
-        ]
+        [Messages_Keys.SenderId]: { $ne: viewerId }
       });
       return createResponse(HttpStatus.OK, messages.S3, count);
     } catch (error) {
@@ -168,21 +180,18 @@ export class MessagesDao implements AbstractMessagesDao {
 
   //#region Get Last Unread Messages For Private Chat
   async getLastUnreadMessagesForPrivateChat(
+    chatId: string,
     viewerId: Types.ObjectId,
-    otherId: Types.ObjectId,
     sinceTimestamp: string,
     limit: number
   ): Promise<AppResponse> {
     try {
       const preview = await this._messagesSchema
         .find({
+          [Messages_Keys.ChatId]: chatId,
           [Messages_Keys.MessageType]: 'private',
-          [Messages_Keys.SenderId]: otherId,
           [Messages_Keys.CreatedOn]: { $gt: sinceTimestamp },
-          $or: [
-            { [Messages_Keys.ReceiverId]: viewerId },
-            { [Messages_Keys.SenderId]: viewerId }
-          ]
+          [Messages_Keys.SenderId]: { $ne: viewerId }
         })
         .sort({ [Messages_Keys.CreatedOn]: -1 })
         .limit(limit);

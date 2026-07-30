@@ -31,6 +31,10 @@ class AppConfigService {
       accessTokenSecret: process.env.JWT_ACCESS_TOKEN_SECRET || 'super-secret-access-token-key-change-me',
       accessTokenExpiresIn: process.env.JWT_ACCESS_TOKEN_EXPIRES_IN || '1d'
     };
+
+    this.envConfig[AppConfig.AES_KEY]={
+      aes_key:process.env.AES_KEY
+    }
   }
 
   get<T extends keyof EnvConfig>(key: T): EnvConfig[T] {

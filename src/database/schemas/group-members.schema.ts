@@ -24,7 +24,7 @@ interface IGroupMember {
   [GroupMembers_Keys.UserId]: Types.ObjectId;
   [GroupMembers_Keys.UserName]: string;
   [GroupMembers_Keys.JoinedAt]: string;
-  [GroupMembers_Keys.LastReadAt]?: string; 
+  [GroupMembers_Keys.LastReadAt]?: string;
 }
 
 interface IGroupMembersModel extends IGroupMember, Document { }

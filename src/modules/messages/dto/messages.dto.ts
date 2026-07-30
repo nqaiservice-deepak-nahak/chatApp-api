@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsMongoId, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsInt, IsMongoId, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { messageFactory, messages } from '../../../shared/messages.shared';
 
 
@@ -40,12 +40,25 @@ export class GetPrivateChatHistoryDto {
   limit: number = 50;
 }
 
+/**
+ * Message content shape. Only `text` is used for now — `imagePath` and `files`
+ * are reserved for upcoming attachment support so this doesn't need another
+ * breaking change once that ships.
+ */
+export class MessageContentDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString({ message: messageFactory(messages.W1, ['text']) })
+  @MaxLength(4000, { message: messageFactory(messages.W4, ['Message text', '4000']) })
+  text?: string;
+}
+
 export class SendMessageDto {
-  @ApiProperty()
+  @ApiProperty({ type: MessageContentDto })
   @IsNotEmpty({ message: messageFactory(messages.W2, ['Message']) })
-  @IsString({ message: messageFactory(messages.W1, ['message']) })
-  @MaxLength(4000, { message: messageFactory(messages.W4, ['Message', '4000']) })
-  readonly message: string;
+  @ValidateNested()
+  @Type(() => MessageContentDto)
+  readonly message: MessageContentDto;
 }
 
 export class SendPrivateMessageDto extends SendMessageDto {

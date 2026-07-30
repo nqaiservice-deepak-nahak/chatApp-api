@@ -127,11 +127,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   //#region Send Message
   @SubscribeMessage('sendMessage')
-  async handleSendMessage(@MessageBody() data: { groupId: string; message: string }, @ConnectedSocket() client: Socket) {
+  async handleSendMessage(
+    @MessageBody() data: { groupId: string; message: { text?: string; imagePath?: string; files?: string } },
+    @ConnectedSocket() client: Socket
+  ) {
     const claims: AtPayload = client.data.claims;
     if (!claims) return client.emit('error', { message: 'Authentication token is required.' });
 
-    if (!data?.message?.trim()) return;
+    if (!data?.message?.text?.trim() && !data?.message?.imagePath?.trim() && !data?.message?.files?.trim()) return;
 
     const sendRes = await this._messagesService.sendMessage(data.groupId, data.message, claims);
     if (sendRes.code !== HttpStatus.CREATED) {
@@ -146,13 +149,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   //#region send Private Message
   @SubscribeMessage('sendPrivateMessage')
   async handleSendPrivateMessage(
-    @MessageBody() data: { receiverId: string; message: string },
+    @MessageBody() data: { receiverId: string; message: { text?: string; imagePath?: string; files?: string } },
     @ConnectedSocket() client: Socket
   ) {
     const claims: AtPayload = client.data.claims;
     if (!claims) return client.emit('error', { message: 'Authentication token is required.' });
 
-    if (!data?.message?.trim() || !data?.receiverId) return;
+    const hasContent = !!data?.message?.text?.trim() || !!data?.message?.imagePath?.trim() || !!data?.message?.files?.trim();
+    if (!hasContent || !data?.receiverId) return;
 
     const sendRes = await this._messagesService.sendPrivateMessage(data.receiverId, data.message, claims);
     if (sendRes.code !== HttpStatus.CREATED) {

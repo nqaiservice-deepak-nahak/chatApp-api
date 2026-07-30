@@ -167,3 +167,13 @@ If the token is missing or invalid, the server emits an `error` event and discon
 | `Groups` | Chat groups | `name`, `description`, `createdBy`, `createdByName`, `createdOn` |
 | `GroupMembers` | Membership + join time | `groupId`, `userId`, `userName`, `joinedAt` — **`joinedAt` is what powers the message-visibility rule** |
 | `Messages` | Chat messages | `groupId`, `senderId`, `senderName`, `message`, `createdOn` |
+
+## What was added today
+
+- Added support for creating groups with multiple members in a single request via `memberIds` on `POST /api/groups`.
+- Ensured group creation still adds the creator as a member automatically.
+- Implemented `GET /api/groups/:groupId/available-members` to return users who are not yet in the group.
+- Updated `GET /api/auth/available-users` to exclude users the current user already has a private chat with.
+- Added direct-chat metadata handling so private-chat partner exclusion works correctly even for historical private messages.
+- Fixed aggregation logic in direct-chat partner lookup to use proper MongoDB field path notation.
+- Verified the backend compiles cleanly after these updates.

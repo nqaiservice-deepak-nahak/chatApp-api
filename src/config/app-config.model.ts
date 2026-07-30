@@ -2,7 +2,8 @@ const enum AppConfig {
   APP = 'app',
   DB = 'db',
   LOGGER = 'logger',
-  JWT = 'jwt'
+  JWT = 'jwt',
+  AES_KEY='aes_key'
 }
 
 interface EnvConfig {
@@ -24,6 +25,9 @@ interface EnvConfig {
     accessTokenSecret: string;
     accessTokenExpiresIn: string;
   };
+  [AppConfig.AES_KEY]:{
+    aes_key:string;
+  }
 }
 
 export { AppConfig, EnvConfig };
