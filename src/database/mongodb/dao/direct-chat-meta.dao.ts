@@ -25,6 +25,20 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
     private readonly _messagesDao: AbstractMessagesDao
   ) {}
 
+  private _privateChatId(userIdA: Types.ObjectId | string, userIdB: Types.ObjectId | string): string {
+    return `direct:${[String(userIdA), String(userIdB)].sort().join(':')}`;
+  }
+
+  private _getOtherUserIdFromChatId(chatId: string, currentUserId: string): string | null {
+    if (!chatId.startsWith('direct:')) return null;
+    const ids = chatId.slice('direct:'.length).split(':');
+    if (ids.length !== 2) return null;
+    const [idA, idB] = ids;
+    if (idA === currentUserId) return idB;
+    if (idB === currentUserId) return idA;
+    return null;
+  }
+
   //#region Mark Direct Chat As Read
   async markDirectChatAsRead(userId: Types.ObjectId, otherUserId: Types.ObjectId): Promise<AppResponse> {
     try {
@@ -57,6 +71,7 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
   ): Promise<AppResponse> {
     try {
       const now = currentDate();
+      const defaultNeverReadAt = '1970-01-01T00:00:00.000Z';
       const pairA = this._metaSchema.findOneAndUpdate(
         {
           [DirectChatMeta_Keys.UserId]: userId,
@@ -66,9 +81,12 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
           $set: {
             [DirectChatMeta_Keys.LastMessagePreview]: preview,
             [DirectChatMeta_Keys.LastMessageAt]: now
+          },
+          $setOnInsert: {
+            [DirectChatMeta_Keys.LastReadAt]: defaultNeverReadAt
           }
         },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
+        { new: true, upsert: true }
       );
       const pairB = this._metaSchema.findOneAndUpdate(
         {
@@ -79,9 +97,12 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
           $set: {
             [DirectChatMeta_Keys.LastMessagePreview]: preview,
             [DirectChatMeta_Keys.LastMessageAt]: now
+          },
+          $setOnInsert: {
+            [DirectChatMeta_Keys.LastReadAt]: defaultNeverReadAt
           }
         },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
+        { new: true, upsert: true }
       );
       await Promise.all([pairA, pairB]);
       return createResponse(HttpStatus.OK, messages.S3, null);
@@ -132,9 +153,10 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
           const since = row[DirectChatMeta_Keys.LastReadAt];
 
           // Count + preview queries — use messagesDao methods (safe, typed, proven)
+          const chatId = this._privateChatId(userId, otherUserId);
           const [countRes, previewRes] = await Promise.all([
-            this._messagesDao.getUnreadCountForPrivateChat(userId, otherUserId, since),
-            this._messagesDao.getLastUnreadMessagesForPrivateChat(userId, otherUserId, since, 3)
+            this._messagesDao.getUnreadCountForPrivateChat(chatId, userId, since),
+            this._messagesDao.getLastUnreadMessagesForPrivateChat(chatId, userId, since, 3)
           ]);
 
           return {
@@ -153,39 +175,26 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
 
       // 5. Also include users we have chatted with via messages but have no meta row yet
       //    (handles historical data before this feature was added)
-      // Find all unique (sender, receiver) pairs from private messages for this user
       const messagesCollection = this._metaSchema.db.collection(Collections.Messages);
-      const sentPartners = await messagesCollection
-        .aggregate([
-          {
-            $match: {
-              [Messages_Keys.MessageType]: 'private',
-              [Messages_Keys.SenderId]: userId
-            }
-          },
-          { $group: { _id: `$${Messages_Keys.ReceiverId}` } }
-        ])
-        .toArray();
-      const receivedPartners = await messagesCollection
-        .aggregate([
-          {
-            $match: {
-              [Messages_Keys.MessageType]: 'private',
-              [Messages_Keys.ReceiverId]: userId
-            }
-          },
-          { $group: { _id: `$${Messages_Keys.SenderId}` } }
-        ])
+      const privateMessages = await messagesCollection
+        .find({
+          [Messages_Keys.MessageType]: 'private',
+          [Messages_Keys.ChatId]: { $regex: '^direct:' }
+        })
+        .project({ [Messages_Keys.ChatId]: 1 })
         .toArray();
 
       const existingPartnerIds = new Set(
         metaRows.map((r) => r[DirectChatMeta_Keys.OtherUserId].toString())
       );
       const allPartnerIds = new Set<string>();
-      for (const p of [...sentPartners, ...receivedPartners]) {
-        const idStr = p._id?.toString();
-        if (idStr && !existingPartnerIds.has(idStr)) {
-          allPartnerIds.add(idStr);
+      for (const message of privateMessages) {
+        const otherIdStr = this._getOtherUserIdFromChatId(
+          message[Messages_Keys.ChatId],
+          userId.toString()
+        );
+        if (otherIdStr && !existingPartnerIds.has(otherIdStr)) {
+          allPartnerIds.add(otherIdStr);
         }
       }
 
@@ -216,20 +225,13 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
             email: ''
           };
 
-          // Last message preview — get latest message between pair
+          const chatId = this._privateChatId(userId, otherIdObj);
+
+          // Last message preview — get latest message for this chatId
           const lastMsgList = await messagesCollection
             .find({
+              [Messages_Keys.ChatId]: chatId,
               [Messages_Keys.MessageType]: 'private',
-              $or: [
-                {
-                  [Messages_Keys.SenderId]: userId,
-                  [Messages_Keys.ReceiverId]: otherIdObj
-                },
-                {
-                  [Messages_Keys.SenderId]: otherIdObj,
-                  [Messages_Keys.ReceiverId]: userId
-                }
-              ]
             })
             .sort({ [Messages_Keys.CreatedOn]: -1 })
             .limit(1)
@@ -240,13 +242,13 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
 
           const [countRes, previewRes] = await Promise.all([
             this._messagesDao.getUnreadCountForPrivateChat(
+              chatId,
               userId,
-              otherIdObj,
               sinceEpoch
             ),
             this._messagesDao.getLastUnreadMessagesForPrivateChat(
+              chatId,
               userId,
-              otherIdObj,
               sinceEpoch,
               3
             )
@@ -258,9 +260,7 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
             otherUserName: userInfo.name,
             otherUserEmail: userInfo.email,
             lastReadAt: null, // never opened → no read mark yet
-            lastMessagePreview: lastMsg
-              ? String(lastMsg[Messages_Keys.Message] || '').slice(0, 100)
-              : null,
+            lastMessagePreview: lastMsg ? '[Encrypted message]' : null,
             lastMessageAt: lastMsg ? lastMsg[Messages_Keys.CreatedOn] : null,
             unreadCount: countRes.data ?? 0,
             unreadPreview: previewRes.data ?? []
@@ -300,23 +300,26 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
         metaRows.map((r) => r[DirectChatMeta_Keys.OtherUserId].toString())
       );
 
-      // 2. Also scan Messages for partners before DirectChatMeta existed (historical data)
+      // 2. Also scan Messages for partners without a DirectChatMeta row yet (historical
+      // data from before DirectChatMeta existed, or a meta-row write that failed silently).
+      // NOTE: new messages only carry chatId (not receiverId), so partners are derived
+      // by parsing chatId the same way getMyDirectConversations() does — do not go back
+      // to matching on Messages_Keys.SenderId/ReceiverId, those fields are no longer
+      // populated for messages created after the chatId migration.
       const messagesCollection = this._metaSchema.db.collection(Collections.Messages);
-      const sentPartners = await messagesCollection
-        .aggregate([
-          { $match: { [Messages_Keys.MessageType]: 'private', [Messages_Keys.SenderId]: userId } },
-          { $group: { _id: `$${Messages_Keys.ReceiverId}` } }
-        ])
-        .toArray();
-      const receivedPartners = await messagesCollection
-        .aggregate([
-          { $match: { [Messages_Keys.MessageType]: 'private', [Messages_Keys.ReceiverId]: userId } },
-          { $group: { _id: `$${Messages_Keys.SenderId}` } }
-        ])
+      const privateMessages = await messagesCollection
+        .find({
+          [Messages_Keys.MessageType]: 'private',
+          [Messages_Keys.ChatId]: { $regex: '^direct:' }
+        })
+        .project({ [Messages_Keys.ChatId]: 1 })
         .toArray();
 
-      for (const p of [...sentPartners, ...receivedPartners]) {
-        const idStr = p._id?.toString();
+      for (const message of privateMessages) {
+        const idStr = this._getOtherUserIdFromChatId(
+          message[Messages_Keys.ChatId],
+          userId.toString()
+        );
         if (idStr) ids.add(idStr);
       }
 
