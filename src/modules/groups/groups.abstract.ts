@@ -15,4 +15,6 @@ export abstract class GroupsAbstractSvc {
   abstract markGroupAsRead(groupId: string, claims: AtPayload): Promise<AppResponse>;
   /** Return users NOT yet in the group (excludes caller) for the "Add Members" picker. */
   abstract getAvailableMembersForGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
+  /** Permanently delete a group; only its creator is authorized. */
+  abstract deleteGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
 }
