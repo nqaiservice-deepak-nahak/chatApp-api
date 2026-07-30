@@ -20,6 +20,10 @@ export class GroupsDao implements AbstractGroupsDao {
     @Inject(AbstractMessagesDao) private readonly _messagesDao: AbstractMessagesDao
   ) { }
 
+  private _groupChatId(groupId: string): string {
+    return `group:${groupId}`;
+  }
+
   //#region Create Group
   async createGroup(groupInfo: IGroup): Promise<AppResponse> {
     try {
@@ -65,8 +69,8 @@ export class GroupsDao implements AbstractGroupsDao {
 
         // Fetch unread count + last 3 messages; exclude viewer's own sent msgs from count/preview
         const [countRes, previewRes] = await Promise.all([
-          this._messagesDao.getUnreadCountForGroup(g._id, since, userId),
-          this._messagesDao.getLastUnreadMessagesForGroup(g._id, since, 3, userId)
+          this._messagesDao.getUnreadCountForGroup(this._groupChatId(groupIdStr), since, userId),
+          this._messagesDao.getLastUnreadMessagesForGroup(this._groupChatId(groupIdStr), since, 3, userId)
         ]);
 
         return {

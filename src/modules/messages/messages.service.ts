@@ -4,12 +4,12 @@ import { AbstractGroupsDao } from '@app/database/mongodb/abstract/groups.abstrac
 import { AbstractAuthDao } from '@app/database/mongodb/abstract/auth.abstract';
 import { AbstractMessagesDao } from '@app/database/mongodb/abstract/messages.abstract';
 import { AppResponse, createResponse } from '@app/shared/app-response.shared';
-import { messages } from '@app/shared/messages.shared';
+import { messageFactory, messages } from '@app/shared/messages.shared';
 import { AtPayload } from '@app/shared/model.shared';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { MessagesAbstractSvc } from './messages.abstract';
-import { GetChatHistoryDto, GetPrivateChatHistoryDto } from './dto/messages.dto';
+import { GetChatHistoryDto, GetPrivateChatHistoryDto, MessageContentDto } from './dto/messages.dto';
 
 @Injectable()
 export class MessagesService implements MessagesAbstractSvc {
@@ -24,6 +24,14 @@ export class MessagesService implements MessagesAbstractSvc {
     @Inject(AbstractDirectChatMetaDao)
     private readonly _directChatMetaDao: AbstractDirectChatMetaDao
   ) { }
+
+  private _groupChatId(groupId: string): string {
+    return `group:${groupId}`;
+  }
+
+  private _privateChatId(userIdA: string, userIdB: string): string {
+    return `direct:${[userIdA, userIdB].sort().join(':')}`;
+  }
 
   //#region Get Chat History
   /**
@@ -45,8 +53,8 @@ export class MessagesService implements MessagesAbstractSvc {
         return createResponse(HttpStatus.FORBIDDEN, messages.W9);
       }
 
-      return await this._messagesDao.getChatHistory(
-        new Types.ObjectId(dto.groupId),
+      return await this._messagesDao.getChatHistoryByChatId(
+        this._groupChatId(dto.groupId),
         membershipRes.data.joinedAt,
         dto.offset,
         dto.limit,
@@ -68,18 +76,27 @@ export class MessagesService implements MessagesAbstractSvc {
   //#endregion Get Chat History
 
   //#region Send Message
-  async sendMessage(groupId: string, text: string, claims: AtPayload): Promise<AppResponse> {
+  async sendMessage(groupId: string, message: MessageContentDto, claims: AtPayload): Promise<AppResponse> {
     try {
       if (!Types.ObjectId.isValid(groupId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+
+      // Only `text` is populated for now; imagePath/files are carried through as-is
+      // so the object shape is already in place for upcoming attachment support.
+      const trimmedText = String(message?.text || '').trim();
+      const imagePath = String(message?.imagePath || '').trim();
+      const files = String(message?.files || '').trim();
+      if (!trimmedText && !imagePath && !files) {
+        return createResponse(HttpStatus.BAD_REQUEST, messageFactory(messages.W2, ['Message']));
+      }
 
       const membershipRes = await this._groupsDao.isMember(new Types.ObjectId(groupId), new Types.ObjectId(claims.userId));
       if (!membershipRes.data) return createResponse(HttpStatus.FORBIDDEN, messages.W9);
 
       return await this._messagesDao.createMessage({
-        groupId: new Types.ObjectId(groupId),
+        chatId: this._groupChatId(groupId),
         senderId: new Types.ObjectId(claims.userId),
         senderName: claims.name,
-        message: text.trim(),
+        message: { text: trimmedText, imagePath, files },
         messageType: 'group',
         createdOn: undefined as any
       });
@@ -96,9 +113,8 @@ export class MessagesService implements MessagesAbstractSvc {
     try {
       if (!Types.ObjectId.isValid(dto.otherUserId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
 
-      return await this._messagesDao.getPrivateChatHistory(
-        new Types.ObjectId(claims.userId),
-        new Types.ObjectId(dto.otherUserId),
+      return await this._messagesDao.getPrivateChatHistoryByChatId(
+        this._privateChatId(claims.userId, dto.otherUserId),
         dto.offset,
         dto.limit
       );
@@ -110,7 +126,7 @@ export class MessagesService implements MessagesAbstractSvc {
   //#endregion
 
   //#region sendPrivateMessage
-  async sendPrivateMessage(receiverId: string, text: string, claims: AtPayload): Promise<AppResponse> {
+  async sendPrivateMessage(receiverId: string, message: MessageContentDto, claims: AtPayload): Promise<AppResponse> {
     try {
       if (!Types.ObjectId.isValid(receiverId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
 
@@ -124,18 +140,30 @@ export class MessagesService implements MessagesAbstractSvc {
         return createResponse(HttpStatus.NOT_FOUND, messages.W5);
       }
 
+      // Only `text` is populated for now; imagePath/files are carried through as-is
+      // so the object shape is already in place for upcoming attachment support.
+      const trimmedText = String(message?.text || '').trim();
+      const imagePath = String(message?.imagePath || '').trim();
+      const files = String(message?.files || '').trim();
+      if (!trimmedText && !imagePath && !files) {
+        return createResponse(HttpStatus.BAD_REQUEST, messageFactory(messages.W2, ['Message']));
+      }
+
+      const chatId = this._privateChatId(claims.userId, receiverId);
       const sendRes = await this._messagesDao.createMessage({
-        receiverId: new Types.ObjectId(receiverId),
+        chatId,
         senderId: new Types.ObjectId(claims.userId),
         senderName: claims.name,
-        message: text.trim(),
+        message: { text: trimmedText, imagePath, files },
         messageType: 'private',
         createdOn: undefined as any
       } as any);
 
       if (sendRes.code === HttpStatus.CREATED) {
         try {
-          const preview = text.trim().slice(0, 100);
+          // Preview cache is still a plain string (used for chat-list previews);
+          // fall back to a placeholder when the message is attachment-only.
+          const preview = trimmedText ? trimmedText.slice(0, 100) : '[attachment]';
           await this._directChatMetaDao.updateLastMessageCache(
             new Types.ObjectId(claims.userId),
             new Types.ObjectId(receiverId),
@@ -211,7 +239,7 @@ export class MessagesService implements MessagesAbstractSvc {
         createdByName: g.createdByName || null,
         createdOn: g.createdOn || null,
         lastMessagePreview: g.unreadPreview?.length
-          ? g.unreadPreview[g.unreadPreview.length - 1]?.message ?? g.lastMessagePreview ?? null
+          ? g.unreadPreview[g.unreadPreview.length - 1]?.message?.text ?? g.lastMessagePreview ?? null
           : (g.lastMessagePreview ?? null),
         lastMessageAt: g.lastMessageAt
           ? g.lastMessageAt
