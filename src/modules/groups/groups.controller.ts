@@ -1,7 +1,7 @@
 import { Authorize } from '@app/core/decorators/authorization.decorator';
 import { CurrentUser } from '@app/core/decorators/current-user.decorator';
 import { AtPayload } from '@app/shared/model.shared';
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
 import { AddGroupMembersDto, CreateGroupDto } from './dto/groups.dto';
@@ -76,4 +76,11 @@ export class GroupsController {
     return await this._groupsService.markGroupAsRead(groupId, claims);
   }
   //#endregion Mark Group As Read
+
+  //#region Delete Group
+  @Delete(':groupId')
+  async deleteGroup(@Param('groupId') groupId: string, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._groupsService.deleteGroup(groupId, claims);
+  }
+  //#endregion Delete Group
 }

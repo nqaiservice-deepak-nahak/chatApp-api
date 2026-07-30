@@ -21,6 +21,7 @@ const enum messages {
   S9 = 'Group details fetched successfully.',
   S10 = 'Messages fetched successfully.',
   S11 = 'Message sent successfully.',
+  S12 = 'Group deleted successfully.',
 
   /*Warning messages : Start with Wn*/
   W1 = 'Please provide a valid ARG0!',
@@ -35,6 +36,7 @@ const enum messages {
   W10 = 'Invalid or expired token.',
   W11 = 'Invalid group id.',
   W12 = 'Authorization token is required.',
+  W13 = 'Only the group creator can delete this group.',
 
   /*Error messages : Start with En*/
   E1 = 'Application failed to start: ARG0',
