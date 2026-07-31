@@ -220,10 +220,14 @@ export class MessagesService implements MessagesAbstractSvc {
   //#endregion
 
   //#region Get My Direct Conversations
-  async getMyDirectConversations(claims: AtPayload): Promise<AppResponse> {
+  async getMyDirectConversations(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse> {
     try {
+      const offset = body.offset ?? 0;
+      const limit = body.limit ?? 50;
+      const search = body.searchData?.trim() || undefined;
       return await this._directChatMetaDao.getMyDirectConversations(
-        new Types.ObjectId(claims.userId)
+        new Types.ObjectId(claims.userId),
+        { search, offset, limit }
       );
     } catch (error) {
       this._loggerSvc.error(__filename, this.getMyDirectConversations.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);

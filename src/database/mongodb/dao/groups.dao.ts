@@ -263,8 +263,14 @@ export class GroupsDao implements AbstractGroupsDao {
 
   //#region Get Available Members For Group
   /** Users NOT in this group yet. Excludes the caller too. Used by the "Add Members" picker UI. */
-  async getAvailableMembersForGroup(groupId: Types.ObjectId, callerUserId: Types.ObjectId): Promise<AppResponse> {
+  async getAvailableMembersForGroup(
+    groupId: Types.ObjectId,
+    callerUserId: Types.ObjectId,
+    options: { search?: string; offset: number; limit: number }
+  ): Promise<AppResponse> {
     try {
+      const search = (options.search || '').trim();
+
       // 1. Existing members (include caller for completeness, then filter them too)
       const memberRows = await this._groupMembersSchema
         .find({ [GroupMembers_Keys.GroupId]: groupId })
@@ -273,25 +279,43 @@ export class GroupsDao implements AbstractGroupsDao {
       const excludeIds = new Set<string>(memberRows.map((m) => m[GroupMembers_Keys.UserId].toString()));
       excludeIds.add(callerUserId.toString());
 
-      // 2. Users collection: exclude member list + caller
+      // 2. Users collection: exclude member list + caller, optionally filter by name/email
       const usersModel = this._groupMembersSchema.db.collection(Collections.Users);
-      const available = await usersModel
-        .find({
-          _id: { $nin: Array.from(excludeIds).map((s) => new Types.ObjectId(s)) }
-        })
-        .project({
-          [GroupMembers_Keys.UserName]: 1,
-          email: 1
-        })
-        .toArray();
+      const query: any = {
+        _id: { $nin: Array.from(excludeIds).map((s) => new Types.ObjectId(s)) }
+      };
+      if (search) {
+        const regex = { $regex: search, $options: 'i' };
+        query.$or = [{ name: regex }, { email: regex }];
+      }
 
-      // 3. Shape to match available-users convention
-      const result = available.map((u: any) => ({
+      // 3. Count BEFORE pagination + apply sort/skip/limit
+      const [totalCount, available] = await Promise.all([
+        usersModel.countDocuments(query),
+        usersModel
+          .find(query)
+          .project({
+            [GroupMembers_Keys.UserName]: 1,
+            email: 1
+          })
+          .sort({ name: 1 })
+          .skip(options.offset)
+          .limit(options.limit)
+          .toArray()
+      ]);
+
+      // 4. Shape to match available-users convention and wrap in envelope
+      const items = available.map((u: any) => ({
         id: u._id,
         name: u[GroupMembers_Keys.UserName] ?? u.name,
         email: u.email
       }));
-      return createResponse(HttpStatus.OK, messages.S8, result);
+      return createResponse(HttpStatus.OK, messages.S8, {
+        totalCount,
+        offset: options.offset,
+        limit: items.length,
+        items
+      });
     } catch (error) {
       this._loggerSvc.error(__filename, this.getAvailableMembersForGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
