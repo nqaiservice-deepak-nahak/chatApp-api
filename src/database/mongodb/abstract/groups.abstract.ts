@@ -21,6 +21,8 @@ export abstract class AbstractGroupsDao {
   abstract markGroupAsRead(groupId: Types.ObjectId, userId: Types.ObjectId): Promise<AppResponse>;
   /** Returns list of user IDs that are already members of this group (helper for dedupe). */
   abstract getMemberUserIds(groupId: Types.ObjectId): Promise<AppResponse>;
+  /** Returns member IDs and display names for real-time group presence. */
+  abstract getGroupMembers(groupId: Types.ObjectId): Promise<AppResponse>;
   /** Returns users not yet in this group, to choose from when adding members. */
   abstract getAvailableMembersForGroup(
     groupId: Types.ObjectId,
