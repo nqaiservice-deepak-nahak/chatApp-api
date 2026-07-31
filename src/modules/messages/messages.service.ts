@@ -275,7 +275,11 @@ export class MessagesService implements MessagesAbstractSvc {
 
       const [groupsRes, directRes] = await Promise.all([
         this._groupsDao.getMyGroups(userId, { search, offset: 0, limit: Number.MAX_SAFE_INTEGER }),
-        this._directChatMetaDao.getMyDirectConversations(userId, { search })
+        this._directChatMetaDao.getMyDirectConversations(userId, {
+          search,
+          offset: 0,
+          limit: Number.MAX_SAFE_INTEGER
+        })
       ]);
 
       // Normalize groups to chat-item shape (DAO now returns paginated envelope .items)
