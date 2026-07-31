@@ -17,6 +17,13 @@ export class GroupsService implements GroupsAbstractSvc {
     private readonly _authDao: AbstractAuthDao
   ) { }
 
+  async getMemberUserIds(groupId: string): Promise<AppResponse> {
+    if (!Types.ObjectId.isValid(groupId)) {
+      return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+    }
+    return this._groupsDao.getMemberUserIds(new Types.ObjectId(groupId));
+  }
+
   //#region Create Group
   async createGroup(body: CreateGroupDto, claims: AtPayload): Promise<AppResponse> {
     try {

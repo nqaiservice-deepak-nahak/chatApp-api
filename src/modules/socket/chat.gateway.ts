@@ -56,6 +56,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const payload = await this._jwtService.verifyAsync(token as string, { secret });
       const claims: AtPayload = { userId: payload.userId, name: payload.name, email: payload.email };
       client.data.claims = claims;
+      client.join(`user:${claims.userId}`);
     } catch (error) {
       this._loggerSvc.error(__filename, this.handleConnection.name, HttpStatus.UNAUTHORIZED, error.message);
       client.emit('error', { message: 'Invalid or expired token.' });
@@ -143,6 +144,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     /*broadcast to everyone currently in the room, including the sender*/
     this.server.to(data.groupId).emit('newMessage', sendRes.data);
+
+    const membersRes = await this._groupsService.getMemberUserIds(data.groupId);
+    if (membersRes.code === HttpStatus.OK) {
+      for (const memberId of membersRes.data || []) {
+        this.server.to(`user:${memberId}`).emit('chatListUpdated');
+      }
+    }
   }
   //#endregion Send Message
 
@@ -165,6 +173,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const roomName = this.getConversationRoomName(claims.userId, data.receiverId);
     this.server.to(roomName).emit('newPrivateMessage', sendRes.data);
+    this.server
+      .to(`user:${claims.userId}`)
+      .to(`user:${data.receiverId}`)
+      .emit('chatListUpdated');
   }
   //#endregion
 }
