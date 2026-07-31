@@ -5,8 +5,14 @@ import { IGroup } from '../../schemas';
 export abstract class AbstractGroupsDao {
   abstract createGroup(groupInfo: IGroup): Promise<AppResponse>;
   abstract findGroupById(groupId: string): Promise<AppResponse>;
-  abstract getMyGroups(userId: Types.ObjectId): Promise<AppResponse>;
-  abstract getAvailableGroups(userId: Types.ObjectId): Promise<AppResponse>;
+  abstract getMyGroups(
+    userId: Types.ObjectId,
+    options: { search?: string; offset: number; limit: number }
+  ): Promise<AppResponse>;
+  abstract getAvailableGroups(
+    userId: Types.ObjectId,
+    options: { search?: string; offset: number; limit: number }
+  ): Promise<AppResponse>;
   /** Search public groups by name, excluding groups the user has already joined. */
   abstract searchPublicGroups(userId: Types.ObjectId, query: string): Promise<AppResponse>;
   abstract isMember(groupId: Types.ObjectId, userId: Types.ObjectId): Promise<AppResponse>;

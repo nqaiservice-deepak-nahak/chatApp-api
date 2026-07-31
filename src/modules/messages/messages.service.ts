@@ -9,7 +9,7 @@ import { AtPayload } from '@app/shared/model.shared';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { MessagesAbstractSvc } from './messages.abstract';
-import { GetChatHistoryDto, GetPrivateChatHistoryDto, MessageContentDto } from './dto/messages.dto';
+import { GetChatHistoryDto, GetPrivateChatHistoryDto, MessageContentDto, PaginatedSearchDto } from './dto/messages.dto';
 import { decrypt, encrypt } from '@app/core/utils/encrypt.util';
 import { AppConfig } from '@app/config/app-config.model';
 import { AppConfigService } from '@app/config/app-config.service';
@@ -254,17 +254,29 @@ export class MessagesService implements MessagesAbstractSvc {
    *   - joined groups (type = 'group') with last-message preview + unreadCount
    *   - existing private conversations (type = 'private') with last-message preview + unreadCount
    * Sorted BY most recent lastMessageAt DESC (WhatsApp-style).
+   * Supports searchData (matches group name OR person name), offset, and limit.
+   *
+   * Note: Because sorting must happen after merge (groups + direct come from different
+   * collections), we still fetch all matching items from each DAO and then slice the
+   * final sorted list. Search filtering is pushed down to the DAO layer to reduce load.
    */
-  async getMyChats(claims: AtPayload): Promise<AppResponse> {
+  async getMyChats(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse> {
     try {
       const userId = new Types.ObjectId(claims.userId);
+      const offset = body.offset ?? 0;
+      const limit = body.limit ?? 50;
+      const search = body.searchData?.trim() || undefined;
+
       const [groupsRes, directRes] = await Promise.all([
-        this._groupsDao.getMyGroups(userId),
-        this._directChatMetaDao.getMyDirectConversations(userId)
+        this._groupsDao.getMyGroups(userId, { search, offset: 0, limit: Number.MAX_SAFE_INTEGER }),
+        this._directChatMetaDao.getMyDirectConversations(userId, { search })
       ]);
 
-      // Normalize groups to chat-item shape
-      const groupItems: any[] = (groupsRes.data || []).map((g: any) => ({
+      // Normalize groups to chat-item shape (DAO now returns paginated envelope .items)
+      const groupRows = Array.isArray(groupsRes.data)
+        ? groupsRes.data
+        : (groupsRes.data as any)?.items || [];
+      const groupItems: any[] = groupRows.map((g: any) => ({
         chatType: 'group',
         id: String(g._id || g.id),
         name: g.name,
@@ -280,7 +292,10 @@ export class MessagesService implements MessagesAbstractSvc {
       }));
 
       // Normalize private conversations to chat-item shape
-      const privateItems: any[] = (directRes.data || []).map((c: any) => ({
+      const directRows = Array.isArray(directRes.data)
+        ? directRes.data
+        : (directRes.data as any)?.items || [];
+      const privateItems: any[] = directRows.map((c: any) => ({
         chatType: 'private',
         id: String(c.otherUserId),
         name: c.otherUserName,
@@ -304,7 +319,16 @@ export class MessagesService implements MessagesAbstractSvc {
         return tb - ta;
       });
 
-      return createResponse(HttpStatus.OK, messages.S8, merged);
+      // Apply final client-level pagination after merge+sort
+      const totalCount = merged.length;
+      const paginated = merged.slice(offset, offset + limit);
+
+      return createResponse(HttpStatus.OK, messages.S8, {
+        totalCount,
+        offset,
+        limit: paginated.length,
+        items: paginated
+      });
     } catch (error) {
       this._loggerSvc.error(__filename, this.getMyChats.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);

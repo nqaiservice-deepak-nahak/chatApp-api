@@ -66,3 +66,26 @@ export class SendPrivateMessageDto extends SendMessageDto {
   @IsNotEmpty({ message: messageFactory(messages.W2, ['Receiver userId']) })
   receiverId: string;
 }
+
+export class PaginatedSearchDto {
+  @ApiProperty({ required: false, default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset: number = 0;
+
+  @ApiProperty({ required: false, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit: number = 50;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString({ message: messageFactory(messages.W1, ['searchData']) })
+  @MaxLength(150, { message: messageFactory(messages.W4, ['Search text', '150']) })
+  searchData?: string;
+}

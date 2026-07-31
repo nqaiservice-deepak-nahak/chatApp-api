@@ -5,7 +5,7 @@ import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
 import { AuthAbstractSvc } from './auth.abstract';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, PaginatedSearchDto, RegisterDto } from './dto/auth.dto';
 
 @Controller('auth')
 @ApiTags('Auth')
@@ -38,9 +38,9 @@ export class AuthController {
   //#region get Available Users
   @Authorize()
   @ApiBearerAuth()
-  @Get('available-users')
-  async getAvailableUsers(@CurrentUser() claims: AtPayload): Promise<AppResponse> {
-    return await this._authService.getAvailableUsers(claims.userId);
+  @Post('available-users')
+  async getAvailableUsers(@Body() body: PaginatedSearchDto, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._authService.getAvailableUsers(body, claims);
   }
   //#endregion
 }
