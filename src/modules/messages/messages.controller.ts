@@ -5,7 +5,7 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
 import { MessagesAbstractSvc } from './messages.abstract';
-import { GetChatHistoryDto, GetPrivateChatHistoryDto, SendMessageDto } from './dto/messages.dto';
+import { GetChatHistoryDto, GetPrivateChatHistoryDto, PaginatedSearchDto, SendMessageDto } from './dto/messages.dto';
 
 @Controller()
 @ApiTags('Messages')
@@ -15,9 +15,9 @@ export class MessagesController {
   constructor(private readonly _messagesService: MessagesAbstractSvc) { }
 
   //#region Combined My Chats
-  @Get('chats')
-  async getMyChats(@CurrentUser() claims: AtPayload): Promise<AppResponse> {
-    return await this._messagesService.getMyChats(claims);
+  @Post('chats')
+  async getMyChats(@Body() body: PaginatedSearchDto, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._messagesService.getMyChats(body, claims);
   }
   //#endregion Combined My Chats
 

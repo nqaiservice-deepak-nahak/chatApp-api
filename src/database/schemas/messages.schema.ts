@@ -17,12 +17,6 @@ const enum Messages_Keys {
 //#endregion Keys
 
 //#region Interfaces
-/**
- * Message content shape. Only `text` is populated for now — `imagePath` and `files`
- * are reserved for upcoming attachment support, but the object shape is already
- * in place so clients/consumers don't need another breaking change later.
- */
-
 interface IMessage {
   [Messages_Keys.ChatId]: string;
   [Messages_Keys.GroupId]?: Types.ObjectId;

@@ -51,12 +51,29 @@ export class GroupsDao implements AbstractGroupsDao {
   }
   //#endregion Find Group by Id
 
-  //#region Get My Groups (groups the user has joined)
-  async getMyGroups(userId: Types.ObjectId): Promise<AppResponse> {
+  //#region Get My Groups (groups the user has joined — paginated + searchable)
+  async getMyGroups(
+    userId: Types.ObjectId,
+    options: { search?: string; offset: number; limit: number }
+  ): Promise<AppResponse> {
     try {
+      const search = (options.search || '').trim();
       const memberships = await this._groupMembersSchema.find({ [GroupMembers_Keys.UserId]: userId });
       const groupIds = memberships.map((m) => m[GroupMembers_Keys.GroupId]);
-      const groups = await this._groupsSchema.find({ [Groups_Keys.id]: { $in: groupIds } }).sort({ [Groups_Keys.CreatedOn]: -1 });
+
+      const query: any = { [Groups_Keys.id]: { $in: groupIds } };
+      if (search) {
+        query[Groups_Keys.Name] = { $regex: search, $options: 'i' };
+      }
+
+      // Count BEFORE pagination
+      const totalCount = await this._groupsSchema.countDocuments(query);
+
+      const groups = await this._groupsSchema
+        .find(query)
+        .sort({ [Groups_Keys.CreatedOn]: -1 })
+        .skip(options.offset)
+        .limit(options.limit);
 
       const joinedAtByGroup = new Map(memberships.map((m) => [m[GroupMembers_Keys.GroupId].toString(), m[GroupMembers_Keys.JoinedAt]]));
       const lastReadByGroup = new Map(memberships.map((m) => [m[GroupMembers_Keys.GroupId].toString(), m[GroupMembers_Keys.LastReadAt]]));
@@ -92,7 +109,12 @@ export class GroupsDao implements AbstractGroupsDao {
         };
       }));
 
-      return createResponse(HttpStatus.OK, messages.S8, enrichedGroups);
+      return createResponse(HttpStatus.OK, messages.S8, {
+        totalCount,
+        offset: options.offset,
+        limit: enrichedGroups.length,
+        items: enrichedGroups
+      });
     } catch (error) {
       this._loggerSvc.error(__filename, this.getMyGroups.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
@@ -100,19 +122,37 @@ export class GroupsDao implements AbstractGroupsDao {
   }
   //#endregion Get My Groups
 
-  //#region Get Available Groups (groups the user has NOT joined — only PUBLIC groups)
-  async getAvailableGroups(userId: Types.ObjectId): Promise<AppResponse> {
+  //#region Get Available Groups (groups the user has NOT joined — only PUBLIC, paginated + searchable)
+  async getAvailableGroups(
+    userId: Types.ObjectId,
+    options: { search?: string; offset: number; limit: number }
+  ): Promise<AppResponse> {
     try {
+      const search = (options.search || '').trim();
       const memberships = await this._groupMembersSchema.find({ [GroupMembers_Keys.UserId]: userId });
       const joinedGroupIds = memberships.map((m) => m[GroupMembers_Keys.GroupId]);
-      const groups = await this._groupsSchema
-        .find({
-          [Groups_Keys.id]: { $nin: joinedGroupIds },
-          [Groups_Keys.Type]: 'public'
-        })
-        .sort({ [Groups_Keys.CreatedOn]: -1 });
 
-      return createResponse(HttpStatus.OK, messages.S8, groups);
+      const query: any = {
+        [Groups_Keys.id]: { $nin: joinedGroupIds },
+        [Groups_Keys.Type]: 'public'
+      };
+      if (search) {
+        query[Groups_Keys.Name] = { $regex: search, $options: 'i' };
+      }
+
+      const totalCount = await this._groupsSchema.countDocuments(query);
+      const groups = await this._groupsSchema
+        .find(query)
+        .sort({ [Groups_Keys.CreatedOn]: -1 })
+        .skip(options.offset)
+        .limit(options.limit);
+
+      return createResponse(HttpStatus.OK, messages.S8, {
+        totalCount,
+        offset: options.offset,
+        limit: groups.length,
+        items: groups
+      });
     } catch (error) {
       this._loggerSvc.error(__filename, this.getAvailableGroups.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);

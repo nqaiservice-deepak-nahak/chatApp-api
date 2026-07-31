@@ -1,5 +1,19 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, MaxLength, IsArray, ArrayUnique, ArrayMaxSize, IsMongoId, IsIn } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray,
+  IsIn,
+  IsInt,
+  IsMongoId,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ArrayMaxSize,
+  ArrayUnique,
+  Max,
+  MaxLength,
+  Min
+} from 'class-validator';
 import { messageFactory, messages } from '../../../shared/messages.shared';
 
 class CreateGroupDto {
@@ -54,9 +68,35 @@ class TransferGroupOwnershipDto {
   readonly newOwnerUserId: string;
 }
 
+class PaginationDto {
+  @ApiProperty({ required: false, default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  readonly offset?: number = 0;
+
+  @ApiProperty({ required: false, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  readonly limit?: number = 50;
+}
+
+class PaginatedSearchDto extends PaginationDto {
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString({ message: messageFactory(messages.W1, ['searchData']) })
+  @MaxLength(150, { message: messageFactory(messages.W4, ['Search text', '150']) })
+  readonly searchData?: string;
+}
+
 export {
   AddGroupMembersDto,
   CreateGroupDto,
+  PaginatedSearchDto,
   SearchPublicGroupsDto,
   TransferGroupOwnershipDto
 };

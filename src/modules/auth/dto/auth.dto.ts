@@ -1,5 +1,16 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsEmail,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength
+} from 'class-validator';
 import { messageFactory, messages } from '../../../shared/messages.shared';
 
 class RegisterDto {
@@ -33,4 +44,27 @@ class LoginDto {
   readonly password: string;
 }
 
-export { LoginDto, RegisterDto };
+class PaginatedSearchDto {
+  @ApiProperty({ required: false, default: 0 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  readonly offset?: number = 0;
+
+  @ApiProperty({ required: false, default: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  readonly limit?: number = 50;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString({ message: messageFactory(messages.W1, ['searchData']) })
+  @MaxLength(150, { message: messageFactory(messages.W4, ['Search text', '150']) })
+  readonly searchData?: string;
+}
+
+export { LoginDto, PaginatedSearchDto, RegisterDto };

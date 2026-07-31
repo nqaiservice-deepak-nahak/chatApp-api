@@ -4,12 +4,13 @@ import { AbstractAuthDao } from '@app/database/mongodb/abstract/auth.abstract';
 import { AbstractDirectChatMetaDao } from '@app/database/mongodb/abstract/direct-chat-meta.abstract';
 import { AppResponse, createResponse } from '@app/shared/app-response.shared';
 import { messages } from '@app/shared/messages.shared';
+import { AtPayload } from '@app/shared/model.shared';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { AuthAbstractSvc } from './auth.abstract';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, PaginatedSearchDto, RegisterDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService implements AuthAbstractSvc {
@@ -90,14 +91,19 @@ export class AuthService implements AuthAbstractSvc {
   }
 
   //#region getAvailableUsers
-  async getAvailableUsers(userId: string): Promise<AppResponse> {
+  async getAvailableUsers(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse> {
     try {
+      const userId = claims.userId;
+      const offset = body.offset ?? 0;
+      const limit = body.limit ?? 50;
+      const search = body.searchData?.trim() || undefined;
+
       const existingPartnersRes = await this._directChatMetaDao.getExistingPartnerIds(new Types.ObjectId(userId));
       const excludedIds = Array.isArray(existingPartnersRes.data) ? existingPartnersRes.data : [];
       // Always exclude self too
       excludedIds.push(userId);
 
-      return await this._authDao.findAllUsersExcept(userId, excludedIds);
+      return await this._authDao.findAllUsersExcept(userId, excludedIds, { search, offset, limit });
     } catch (error) {
       this._loggerSvc.error(__filename, this.getAvailableUsers.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
