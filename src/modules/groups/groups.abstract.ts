@@ -14,6 +14,8 @@ export abstract class GroupsAbstractSvc {
   abstract verifyMembership(groupId: string, userId: string): Promise<AppResponse>;
   /** Internal helper used by the socket gateway to notify group members. */
   abstract getMemberUserIds(groupId: string): Promise<AppResponse>;
+  /** Internal helper used by the socket gateway to build group presence. */
+  abstract getGroupMembers(groupId: string): Promise<AppResponse>;
   /** Add one or more existing users to an already-created group; returns per-ID results. */
   abstract addGroupMembers(groupId: string, dto: AddGroupMembersDto, claims: AtPayload): Promise<AppResponse>;
   abstract markGroupAsRead(groupId: string, claims: AtPayload): Promise<AppResponse>;

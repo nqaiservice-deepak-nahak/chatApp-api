@@ -80,6 +80,39 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return `direct:${[userIdA, userIdB].sort().join(':')}`;
   }
 
+  private async getGroupPresence(groupId: string) {
+    const membersRes = await this._groupsService.getGroupMembers(groupId);
+    if (membersRes.code !== HttpStatus.OK) return null;
+
+    const connectedSockets = await this.server.fetchSockets();
+    const onlineUserIds = new Set(
+      connectedSockets
+        .map((socket) => socket.data.claims?.userId)
+        .filter((userId): userId is string => Boolean(userId))
+    );
+
+    const members = (membersRes.data || []).map(
+      (member: { userId: string; userName: string }) => ({
+        ...member,
+        isOnline: onlineUserIds.has(member.userId)
+      })
+    );
+
+    return {
+      groupId,
+      activeCount: members.filter((member) => member.isOnline).length,
+      members
+    };
+  }
+
+  private async emitGroupPresence(groupId: string, client?: Socket) {
+    const presence = await this.getGroupPresence(groupId);
+    if (!presence) return;
+
+    if (client) client.emit('groupPresence', presence);
+    else this.server.to(groupId).emit('groupPresence', presence);
+  }
+
   @SubscribeMessage('checkUserPresence')
   async handleCheckUserPresence(
     @MessageBody() data: { userId: string },
@@ -146,6 +179,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     client.join(data.groupId);
     client.emit('joinedGroup', { groupId: data.groupId });
+    await this.emitGroupPresence(data.groupId);
 
     try {
       await this._groupsService.markGroupAsRead(data.groupId, claims);
@@ -156,6 +190,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
   //#endregion Join Group Room
+
+  @SubscribeMessage('getGroupPresence')
+  async handleGetGroupPresence(
+    @MessageBody() data: { groupId: string },
+    @ConnectedSocket() client: Socket
+  ) {
+    const claims: AtPayload = client.data.claims;
+    if (!claims) return client.emit('error', { message: 'Authentication token is required.' });
+
+    const membershipRes = await this._groupsService.verifyMembership(data.groupId, claims.userId);
+    if (membershipRes.code !== HttpStatus.OK) {
+      return client.emit('error', { message: membershipRes.message });
+    }
+
+    await this.emitGroupPresence(data.groupId, client);
+  }
 
   //#region Leave Group Room
   @SubscribeMessage('leaveGroup')

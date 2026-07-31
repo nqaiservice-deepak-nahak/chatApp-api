@@ -167,6 +167,13 @@ export class GroupsService implements GroupsAbstractSvc {
   }
   //#endregion Verify Membership
 
+  async getGroupMembers(groupId: string): Promise<AppResponse> {
+    if (!Types.ObjectId.isValid(groupId)) {
+      return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+    }
+    return this._groupsDao.getGroupMembers(new Types.ObjectId(groupId));
+  }
+
   //#region Add Members to Existing Group
   async addGroupMembers(groupId: string, dto: AddGroupMembersDto, claims: AtPayload): Promise<AppResponse> {
     try {

@@ -261,6 +261,36 @@ export class GroupsDao implements AbstractGroupsDao {
   }
   //#endregion
 
+  //#region Get Group Members For Presence
+  async getGroupMembers(groupId: Types.ObjectId): Promise<AppResponse> {
+    try {
+      const members = await this._groupMembersSchema
+        .find({ [GroupMembers_Keys.GroupId]: groupId })
+        .select(`${GroupMembers_Keys.UserId} ${GroupMembers_Keys.UserName}`)
+        .sort({ [GroupMembers_Keys.UserName]: 1 })
+        .lean()
+        .exec();
+
+      return createResponse(
+        HttpStatus.OK,
+        messages.S3,
+        members.map((member) => ({
+          userId: member[GroupMembers_Keys.UserId].toString(),
+          userName: member[GroupMembers_Keys.UserName]
+        }))
+      );
+    } catch (error) {
+      this._loggerSvc.error(
+        __filename,
+        this.getGroupMembers.name,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        (error as Error).stack
+      );
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion
+
   //#region Get Available Members For Group
   /** Users NOT in this group yet. Excludes the caller too. Used by the "Add Members" picker UI. */
   async getAvailableMembersForGroup(
