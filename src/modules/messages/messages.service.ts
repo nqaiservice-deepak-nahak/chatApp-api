@@ -186,13 +186,15 @@ export class MessagesService implements MessagesAbstractSvc {
 
       if (sendRes.code === HttpStatus.CREATED) {
         try {
-          // Preview cache is still a plain string (used for chat-list previews);
-          // fall back to a placeholder when the message is attachment-only.
-          const preview = trimmedText ? trimmedText.slice(0, 100) : '[attachment]';
+          // Preview cache is now encrypted before writing to DirectChatMeta DB.
+          // Fall back to a placeholder when the message is attachment-only.
+          const plainPreview = trimmedText ? trimmedText.slice(0, 100) : '[attachment]';
+          const aesKey = this._appConfigSvc.get(AppConfig.AES_KEY).aes_key;
+          const encryptedPreview = encrypt(plainPreview, aesKey);
           const cacheRes = await this._directChatMetaDao.updateLastMessageCache(
             new Types.ObjectId(claims.userId),
             new Types.ObjectId(receiverId),
-            preview
+            encryptedPreview
           );
 
           if (cacheRes.code !== HttpStatus.OK) {

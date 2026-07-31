@@ -1,4 +1,7 @@
+import { AppConfig, AppConfigService } from '@app/config/app-config.service';
 import AppLogger from '@app/core/loggers/app-logger';
+import { decrypt, encrypt } from '@app/core/utils/encrypt.util';
+import { currentDate } from '@app/core/utils/timestamp-util';
 import { AppResponse, createResponse } from '@app/shared/app-response.shared';
 import { messages } from '@app/shared/messages.shared';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
@@ -13,12 +16,12 @@ import { AbstractDirectChatMetaDao } from '../abstract/direct-chat-meta.abstract
 import { AbstractMessagesDao } from '../abstract/messages.abstract';
 import { Collections } from '../connection/collections.mongo';
 import { MongoConstants } from '../connection/constants.mongo';
-import { currentDate } from '@app/core/utils/timestamp-util';
 
 @Injectable()
 export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
   constructor(
     private readonly _loggerSvc: AppLogger,
+    private readonly _appConfigSvc: AppConfigService,
     @Inject(MongoConstants.DIRECT_CHAT_META_SCHEMA)
     private readonly _metaSchema: Model<IDirectChatMeta>,
     @Inject(AbstractMessagesDao)
@@ -27,6 +30,30 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
 
   private _privateChatId(userIdA: Types.ObjectId | string, userIdB: Types.ObjectId | string): string {
     return `direct:${[String(userIdA), String(userIdB)].sort().join(':')}`;
+  }
+
+  /** Safely decrypt a lastMessagePreview value from the DB. Returns null for empty values.
+   *  Gracefully falls back to the raw string if decryption fails (legacy rows, corrupt payloads). */
+  private _decryptPreview(storedValue: unknown): string | null {
+    if (storedValue == null || storedValue === '') return null;
+    if (typeof storedValue !== 'string') return null;
+    // Only values with the IV:ciphertext `:` structure are encrypted; anything else
+    // is returned as-is (covers short placeholders such as '[attachment]' during tests
+    // or older rows that were inserted before the encryption rule landed).
+    if (!storedValue.includes(':')) return storedValue;
+    try {
+      const aesKey = this._appConfigSvc.get(AppConfig.AES_KEY).aes_key;
+      const decrypted = decrypt(storedValue, aesKey);
+      return typeof decrypted === 'string' ? decrypted : null;
+    } catch {
+      return storedValue;
+    }
+  }
+
+  /** Encrypt a plaintext preview string (used internally when writing synthesized values). */
+  private _encryptPreview(plainPreview: string): string {
+    const aesKey = this._appConfigSvc.get(AppConfig.AES_KEY).aes_key;
+    return encrypt(plainPreview, aesKey);
   }
 
   private _getOtherUserIdFromChatId(chatId: string, currentUserId: string): string | null {
@@ -184,7 +211,7 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
             otherUserName: otherUser.name,
             otherUserEmail: otherUser.email,
             lastReadAt: row[DirectChatMeta_Keys.LastReadAt] || null,
-            lastMessagePreview: row[DirectChatMeta_Keys.LastMessagePreview] || null,
+            lastMessagePreview: this._decryptPreview(row[DirectChatMeta_Keys.LastMessagePreview]),
             lastMessageAt: row[DirectChatMeta_Keys.LastMessageAt] || null,
             unreadCount: countRes.data ?? 0,
             unreadPreview: previewRes.data ?? []
@@ -285,6 +312,7 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
             otherUserName: userInfo.name,
             otherUserEmail: userInfo.email,
             lastReadAt: null, // never opened → no read mark yet
+            // This placeholder is virtual (never stored in DirectChatMeta) so it stays plaintext.
             lastMessagePreview: lastMsg ? '[Encrypted message]' : null,
             lastMessageAt: lastMsg ? lastMsg[Messages_Keys.CreatedOn] : null,
             unreadCount: countRes.data ?? 0,
