@@ -148,10 +148,12 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
   //#region Get My Direct Conversations (enriched with unread)
   async getMyDirectConversations(
     userId: Types.ObjectId,
-    options?: { search?: string }
+    options?: { search?: string; offset: number; limit: number }
   ): Promise<AppResponse> {
     try {
       const searchTerm = (options?.search || '').trim();
+      const offset = options?.offset ?? 0;
+      const limit = options?.limit ?? Number.MAX_SAFE_INTEGER;
 
       // 1. Find all meta rows for this user, sorted by most recent activity
       const metaRows = await this._metaSchema
@@ -328,7 +330,16 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
         return bt - at;
       });
 
-      return createResponse(HttpStatus.OK, messages.S8, enriched);
+      // 7. Apply pagination on the final merged/sorted list and wrap in envelope
+      const totalCount = enriched.length;
+      const paginated = enriched.slice(offset, offset + limit);
+
+      return createResponse(HttpStatus.OK, messages.S8, {
+        totalCount,
+        offset,
+        limit: paginated.length,
+        items: paginated
+      });
     } catch (error) {
       this._loggerSvc.error(
         __filename,

@@ -8,7 +8,7 @@ export abstract class MessagesAbstractSvc {
   abstract sendMessage(groupId: string, message: MessageContentDto, claims: AtPayload): Promise<AppResponse>;
   abstract getPrivateChatHistory(dto: GetPrivateChatHistoryDto, claims: AtPayload): Promise<AppResponse>;
   abstract sendPrivateMessage(receiverId: string, message: MessageContentDto, claims: AtPayload): Promise<AppResponse>;
-  abstract getMyDirectConversations(claims: AtPayload): Promise<AppResponse>;
+  abstract getMyDirectConversations(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse>;
   abstract markDirectChatAsRead(otherUserId: string, claims: AtPayload): Promise<AppResponse>;
   /** Combined chats endpoint: groups + private convos sorted by lastMessageAt descending. */
   abstract getMyChats(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse>;

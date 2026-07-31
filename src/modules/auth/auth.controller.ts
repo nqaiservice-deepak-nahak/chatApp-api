@@ -2,7 +2,7 @@ import { Authorize } from '@app/core/decorators/authorization.decorator';
 import { CurrentUser } from '@app/core/decorators/current-user.decorator';
 import { AtPayload } from '@app/shared/model.shared';
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
 import { AuthAbstractSvc } from './auth.abstract';
 import { LoginDto, PaginatedSearchDto, RegisterDto } from './dto/auth.dto';
@@ -14,6 +14,7 @@ export class AuthController {
 
   //#region Register
   @Post('register')
+  @ApiOperation({summary:'Register a new user account.'})
   async register(@Body() userInfo: RegisterDto): Promise<AppResponse> {
     return await this._authService.register(userInfo);
   }
@@ -21,6 +22,7 @@ export class AuthController {
 
   //#region Login
   @Post('login')
+  @ApiOperation({summary:'Log in and receive an access token.'})
   async login(@Body() loginInfo: LoginDto): Promise<AppResponse> {
     return await this._authService.login(loginInfo);
   }
@@ -30,6 +32,7 @@ export class AuthController {
   @Authorize()
   @ApiBearerAuth()
   @Get('me')
+  @ApiOperation({summary:"Get the current logged-in user's profile."})
   async getProfile(@CurrentUser() claims: AtPayload): Promise<AppResponse> {
     return await this._authService.getProfile(claims.userId);
   }
@@ -39,6 +42,7 @@ export class AuthController {
   @Authorize()
   @ApiBearerAuth()
   @Post('available-users')
+  @ApiOperation({summary:'List users you can start a new private chat with.'})
   async getAvailableUsers(@Body() body: PaginatedSearchDto, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
     return await this._authService.getAvailableUsers(body, claims);
   }
