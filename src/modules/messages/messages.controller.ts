@@ -44,9 +44,12 @@ export class MessagesController {
   //#endregion
 
   //#region Get My Direct Conversations
-  @Get('messages/direct')
-  async getMyDirectConversations(@CurrentUser() claims: AtPayload): Promise<AppResponse> {
-    return await this._messagesService.getMyDirectConversations(claims);
+  @Post('messages/direct')
+  async getMyDirectConversations(
+    @Body() body: PaginatedSearchDto,
+    @CurrentUser() claims: AtPayload
+  ): Promise<AppResponse> {
+    return await this._messagesService.getMyDirectConversations(body, claims);
   }
   //#endregion
 

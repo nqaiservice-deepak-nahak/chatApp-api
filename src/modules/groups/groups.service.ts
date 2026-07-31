@@ -218,7 +218,11 @@ export class GroupsService implements GroupsAbstractSvc {
   //#endregion Add Members to Existing Group
 
   //#region Get Available Members For Group
-  async getAvailableMembersForGroup(groupId: string, claims: AtPayload): Promise<AppResponse> {
+  async getAvailableMembersForGroup(
+    groupId: string,
+    body: PaginatedSearchDto,
+    claims: AtPayload
+  ): Promise<AppResponse> {
     try {
       if (!Types.ObjectId.isValid(groupId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
 
@@ -231,9 +235,14 @@ export class GroupsService implements GroupsAbstractSvc {
       );
       if (!membershipRes.data) return createResponse(HttpStatus.FORBIDDEN, messages.W9);
 
+      const offset = body.offset ?? 0;
+      const limit = body.limit ?? 50;
+      const search = body.searchData?.trim() || undefined;
+
       return await this._groupsDao.getAvailableMembersForGroup(
         new Types.ObjectId(groupId),
-        new Types.ObjectId(claims.userId)
+        new Types.ObjectId(claims.userId),
+        { search, offset, limit }
       );
     } catch (error) {
       this._loggerSvc.error(__filename, this.getAvailableMembersForGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);

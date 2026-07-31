@@ -18,7 +18,11 @@ export abstract class GroupsAbstractSvc {
   abstract addGroupMembers(groupId: string, dto: AddGroupMembersDto, claims: AtPayload): Promise<AppResponse>;
   abstract markGroupAsRead(groupId: string, claims: AtPayload): Promise<AppResponse>;
   /** Return users NOT yet in the group (excludes caller) for the "Add Members" picker. */
-  abstract getAvailableMembersForGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
+  abstract getAvailableMembersForGroup(
+    groupId: string,
+    body: PaginatedSearchDto,
+    claims: AtPayload
+  ): Promise<AppResponse>;
   /** Permanently delete a group; only its creator is authorized. */
   abstract deleteGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
   /** Transfer group ownership to another member. Only the current creator can do this. */
