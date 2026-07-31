@@ -1,11 +1,11 @@
 import { AppResponse } from '../../shared/app-response.shared';
 import { AtPayload } from '../../shared/model.shared';
-import { AddGroupMembersDto, CreateGroupDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
+import { AddGroupMembersDto, CreateGroupDto, PaginatedSearchDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
 
 export abstract class GroupsAbstractSvc {
   abstract createGroup(body: CreateGroupDto, claims: AtPayload): Promise<AppResponse>;
-  abstract getMyGroups(claims: AtPayload): Promise<AppResponse>;
-  abstract getAvailableGroups(claims: AtPayload): Promise<AppResponse>;
+  abstract getMyGroups(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse>;
+  abstract getAvailableGroups(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse>;
   /** Search public groups by name that the user has NOT already joined. */
   abstract searchPublicGroups(body: SearchPublicGroupsDto, claims: AtPayload): Promise<AppResponse>;
   abstract getGroupDetails(groupId: string, claims: AtPayload): Promise<AppResponse>;

@@ -119,8 +119,13 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
   //#endregion
 
   //#region Get My Direct Conversations (enriched with unread)
-  async getMyDirectConversations(userId: Types.ObjectId): Promise<AppResponse> {
+  async getMyDirectConversations(
+    userId: Types.ObjectId,
+    options?: { search?: string }
+  ): Promise<AppResponse> {
     try {
+      const searchTerm = (options?.search || '').trim();
+
       // 1. Find all meta rows for this user, sorted by most recent activity
       const metaRows = await this._metaSchema
         .find({ [DirectChatMeta_Keys.UserId]: userId })
@@ -131,9 +136,15 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
       const otherUserIds = metaRows.map((r) => r[DirectChatMeta_Keys.OtherUserId]);
 
       // 3. Batch lookup of other users (name, email) — one query instead of N
+      //    If a search term is provided, filter at the DB level (by name OR email, case-insensitive)
       const usersModel = this._metaSchema.db.collection(Collections.Users);
+      const userQuery: any = { _id: { $in: otherUserIds } };
+      if (searchTerm) {
+        const regex = { $regex: searchTerm, $options: 'i' };
+        userQuery.$or = [{ [Users_Keys.Name]: regex }, { [Users_Keys.Email]: regex }];
+      }
       const otherUsersDocs = await usersModel
-        .find({ _id: { $in: otherUserIds } })
+        .find(userQuery)
         .project({ [Users_Keys.Name]: 1, [Users_Keys.Email]: 1 })
         .toArray();
       const otherUsersMap = new Map<string, { name: string; email: string }>();
@@ -144,9 +155,17 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
         });
       }
 
+      // Determine which user IDs matched the search (so we skip non-matching partners)
+      const matchedPartnerIds = new Set(otherUsersMap.keys());
+
       // 4. For each conversation, compute unreadCount and unreadPreview in parallel
+      //    Skip rows whose partner did not match the search filter
+      const filteredMetaRows = searchTerm
+        ? metaRows.filter((r) => matchedPartnerIds.has(r[DirectChatMeta_Keys.OtherUserId].toString()))
+        : metaRows;
+
       const enriched = await Promise.all(
-        metaRows.map(async (row: any) => {
+        filteredMetaRows.map(async (row: any) => {
           const otherUserId = row[DirectChatMeta_Keys.OtherUserId];
           const otherUserIdStr = otherUserId.toString();
           const otherUser = otherUsersMap.get(otherUserIdStr) || { name: 'Unknown', email: '' };
@@ -199,12 +218,18 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
       }
 
       // For each newly-discovered partner without meta, create a virtual entry
+      // When a search term exists, pre-filter partners at the user lookup step too
       if (allPartnerIds.size > 0) {
         const objectIds = Array.from(allPartnerIds).map(
           (id) => new Types.ObjectId(id)
         );
+        const missingUserQuery: any = { _id: { $in: objectIds } };
+        if (searchTerm) {
+          const regex = { $regex: searchTerm, $options: 'i' };
+          missingUserQuery.$or = [{ [Users_Keys.Name]: regex }, { [Users_Keys.Email]: regex }];
+        }
         const missingUsersDocs = await usersModel
-          .find({ _id: { $in: objectIds } })
+          .find(missingUserQuery)
           .project({ [Users_Keys.Name]: 1, [Users_Keys.Email]: 1 })
           .toArray();
         const missingUsersMap = new Map<string, { name: string; email: string }>();

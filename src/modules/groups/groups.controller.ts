@@ -1,10 +1,10 @@
 import { Authorize } from '@app/core/decorators/authorization.decorator';
 import { CurrentUser } from '@app/core/decorators/current-user.decorator';
 import { AtPayload } from '@app/shared/model.shared';
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
-import { AddGroupMembersDto, CreateGroupDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
+import { AddGroupMembersDto, CreateGroupDto, PaginatedSearchDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
 import { GroupsAbstractSvc } from './groups.abstract';
 
 @Controller('groups')
@@ -22,16 +22,16 @@ export class GroupsController {
   //#endregion Create Group
 
   //#region Get My Groups
-  @Get('my')
-  async getMyGroups(@CurrentUser() claims: AtPayload): Promise<AppResponse> {
-    return await this._groupsService.getMyGroups(claims);
+  @Post('my')
+  async getMyGroups(@Body() body: PaginatedSearchDto, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._groupsService.getMyGroups(body, claims);
   }
   //#endregion Get My Groups
 
   //#region Get Available Groups
-  @Get('available')
-  async getAvailableGroups(@CurrentUser() claims: AtPayload): Promise<AppResponse> {
-    return await this._groupsService.getAvailableGroups(claims);
+  @Post('available')
+  async getAvailableGroups(@Body() body: PaginatedSearchDto, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._groupsService.getAvailableGroups(body, claims);
   }
   //#endregion Get Available Groups
 

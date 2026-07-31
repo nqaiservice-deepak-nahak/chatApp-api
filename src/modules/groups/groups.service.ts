@@ -6,7 +6,7 @@ import { messages } from '@app/shared/messages.shared';
 import { AtPayload } from '@app/shared/model.shared';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { AddGroupMembersDto, CreateGroupDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
+import { AddGroupMembersDto, CreateGroupDto, PaginatedSearchDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
 import { GroupsAbstractSvc } from './groups.abstract';
 
 @Injectable()
@@ -70,9 +70,12 @@ export class GroupsService implements GroupsAbstractSvc {
   //#endregion Create Group
 
   //#region Get My Groups
-  async getMyGroups(claims: AtPayload): Promise<AppResponse> {
+  async getMyGroups(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse> {
     try {
-      return await this._groupsDao.getMyGroups(new Types.ObjectId(claims.userId));
+      const offset = body.offset ?? 0;
+      const limit = body.limit ?? 50;
+      const search = body.searchData?.trim() || undefined;
+      return await this._groupsDao.getMyGroups(new Types.ObjectId(claims.userId), { search, offset, limit });
     } catch (error) {
       this._loggerSvc.error(__filename, this.getMyGroups.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
@@ -81,9 +84,12 @@ export class GroupsService implements GroupsAbstractSvc {
   //#endregion Get My Groups
 
   //#region Get Available Groups
-  async getAvailableGroups(claims: AtPayload): Promise<AppResponse> {
+  async getAvailableGroups(body: PaginatedSearchDto, claims: AtPayload): Promise<AppResponse> {
     try {
-      return await this._groupsDao.getAvailableGroups(new Types.ObjectId(claims.userId));
+      const offset = body.offset ?? 0;
+      const limit = body.limit ?? 50;
+      const search = body.searchData?.trim() || undefined;
+      return await this._groupsDao.getAvailableGroups(new Types.ObjectId(claims.userId), { search, offset, limit });
     } catch (error) {
       this._loggerSvc.error(__filename, this.getAvailableGroups.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
