@@ -57,6 +57,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const claims: AtPayload = { userId: payload.userId, name: payload.name, email: payload.email };
       client.data.claims = claims;
       client.join(`user:${claims.userId}`);
+      this.server.emit('presenceChanged', { userId: claims.userId, isOnline: true });
     } catch (error) {
       this._loggerSvc.error(__filename, this.handleConnection.name, HttpStatus.UNAUTHORIZED, error.message);
       client.emit('error', { message: 'Invalid or expired token.' });
@@ -64,12 +65,33 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  handleDisconnect(_client: Socket) {
-    /*socket.io automatically cleans up room membership on disconnect*/
+  async handleDisconnect(client: Socket) {
+    const userId = client.data.claims?.userId;
+    if (!userId) return;
+
+    const remainingSockets = await this.server.in(`user:${userId}`).fetchSockets();
+    this.server.emit('presenceChanged', {
+      userId,
+      isOnline: remainingSockets.length > 0
+    });
   }
 
   private getConversationRoomName(userIdA: string, userIdB: string): string {
     return `direct:${[userIdA, userIdB].sort().join(':')}`;
+  }
+
+  @SubscribeMessage('checkUserPresence')
+  async handleCheckUserPresence(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: Socket
+  ) {
+    if (!client.data.claims || !data?.userId) return;
+
+    const sockets = await this.server.in(`user:${data.userId}`).fetchSockets();
+    client.emit('userPresence', {
+      userId: data.userId,
+      isOnline: sockets.length > 0
+    });
   }
 
 
@@ -94,6 +116,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
   //#endregion
+
+  @SubscribeMessage('markPrivateChatRead')
+  async handleMarkPrivateChatRead(
+    @MessageBody() data: { userId: string },
+    @ConnectedSocket() client: Socket
+  ) {
+    const claims: AtPayload = client.data.claims;
+    if (!claims || !data?.userId) return;
+
+    const result = await this._messagesService.markDirectChatAsRead(data.userId, claims);
+    if (result.code === HttpStatus.OK) {
+      // Keep another open dashboard tab in sync after the active chat reads
+      // a message that was just delivered.
+      this.server.to(`user:${claims.userId}`).emit('chatListUpdated');
+    }
+  }
 
   //#region Join Group Room
   @SubscribeMessage('joinGroup')

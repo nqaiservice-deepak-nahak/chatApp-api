@@ -75,7 +75,9 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
           [DirectChatMeta_Keys.OtherUserId]: otherUserId
         },
         { $set: { [DirectChatMeta_Keys.LastReadAt]: currentDate() } },
-        { new: true, upsert: true, setDefaultsOnInsert: true }
+        // Merely opening an empty conversation must not create a chat-list
+        // entry. The metadata row is created after the first message is sent.
+        { new: true, upsert: false }
       );
       return createResponse(HttpStatus.OK, messages.S3, updated);
     } catch (error) {
@@ -157,7 +159,10 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
 
       // 1. Find all meta rows for this user, sorted by most recent activity
       const metaRows = await this._metaSchema
-        .find({ [DirectChatMeta_Keys.UserId]: userId })
+        .find({
+          [DirectChatMeta_Keys.UserId]: userId,
+          [DirectChatMeta_Keys.LastMessageAt]: { $exists: true, $ne: null }
+        })
         .sort({ [DirectChatMeta_Keys.LastMessageAt]: -1 })
         .exec();
 
@@ -357,7 +362,10 @@ export class DirectChatMetaDao implements AbstractDirectChatMetaDao {
     try {
       // 1. Partners already tracked in DirectChatMeta
       const metaRows = await this._metaSchema
-        .find({ [DirectChatMeta_Keys.UserId]: userId })
+        .find({
+          [DirectChatMeta_Keys.UserId]: userId,
+          [DirectChatMeta_Keys.LastMessageAt]: { $exists: true, $ne: null }
+        })
         .select(`${DirectChatMeta_Keys.OtherUserId}`)
         .exec();
       const ids = new Set<string>(
