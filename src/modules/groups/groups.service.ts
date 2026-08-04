@@ -10,6 +10,9 @@ import { AddGroupMembersDto, CreateGroupDto, PaginatedSearchDto, SearchPublicGro
 import { GroupsAbstractSvc } from './groups.abstract';
 import { GroupType } from '@app/database/schemas';
 import { GroupNotificationService } from '@app/modules/socket/group-notification.service';
+import { AbstractMessagesDao } from '@app/database/mongodb/abstract/messages.abstract';
+import { AppConfig, AppConfigService } from '@app/config/app-config.service';
+import { encrypt } from '@app/core/utils/encrypt.util';
 
 @Injectable()
 export class GroupsService implements GroupsAbstractSvc {
@@ -17,8 +20,27 @@ export class GroupsService implements GroupsAbstractSvc {
     private readonly _loggerSvc: AppLogger,
     private readonly _groupsDao: AbstractGroupsDao,
     private readonly _authDao: AbstractAuthDao,
-    private readonly _groupNotificationService: GroupNotificationService
+    private readonly _groupNotificationService: GroupNotificationService,
+    private readonly _messagesDao: AbstractMessagesDao,
+    private readonly _appConfigSvc: AppConfigService
   ) { }
+
+  private async createSystemMessage(groupId: string, actor: AtPayload, text: string): Promise<void> {
+    const encryptedMessage = encrypt({ text }, this._appConfigSvc.get(AppConfig.AES_KEY).aes_key);
+    const result = await this._messagesDao.createMessage({
+      chatId: `group:${groupId}`,
+      groupId: new Types.ObjectId(groupId),
+      senderId: new Types.ObjectId(actor.userId),
+      senderName: actor.name,
+      message: encryptedMessage,
+      messageType: 'system',
+      createdOn: undefined as any
+    });
+
+    if (result.code === HttpStatus.CREATED) {
+      this._groupNotificationService.notifyGroupSystemMessage(groupId, result.data);
+    }
+  }
 
   async getMemberUserIds(groupId: string): Promise<AppResponse> {
     if (!Types.ObjectId.isValid(groupId)) {
@@ -43,6 +65,11 @@ export class GroupsService implements GroupsAbstractSvc {
       /*creator automatically becomes a member of the group*/
       const group: any = createRes.data;
       await this._groupsDao.addMember(group._id, new Types.ObjectId(claims.userId), claims.name);
+      await this.createSystemMessage(
+        group._id.toString(),
+        claims,
+        `${claims.name} created group “${group.name}”`
+      );
 
       // Add any additional members provided in the DTO
       const summary: { id: string; ok: boolean; reason?: string }[] = [];
@@ -55,7 +82,10 @@ export class GroupsService implements GroupsAbstractSvc {
           if (userRes.code !== HttpStatus.OK) return { id, ok: false, reason: 'user not found' };
           const name = userRes.data.name;
           const res = await this._groupsDao.addMember(group._id, new Types.ObjectId(id), name);
-          if (res.code === HttpStatus.CREATED) return { id, ok: true };
+          if (res.code === HttpStatus.CREATED) {
+            await this.createSystemMessage(group._id.toString(), claims, `${claims.name} added ${name}`);
+            return { id, ok: true };
+          }
           // conflict (already member) or other error
           return { id, ok: false, reason: res.message || 'failed' };
         });
@@ -156,7 +186,11 @@ export class GroupsService implements GroupsAbstractSvc {
       }
 
 
-      return await this._groupsDao.addMember(new Types.ObjectId(groupId), new Types.ObjectId(claims.userId), claims.name);
+      const joinRes = await this._groupsDao.addMember(new Types.ObjectId(groupId), new Types.ObjectId(claims.userId), claims.name);
+      if (joinRes.code === HttpStatus.CREATED) {
+        await this.createSystemMessage(groupId, claims, `${claims.name} joined`);
+      }
+      return joinRes;
     } catch (error) {
       this._loggerSvc.error(__filename, this.joinGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
@@ -187,10 +221,14 @@ export class GroupsService implements GroupsAbstractSvc {
       );
       if (!membershipRes.data) return createResponse(HttpStatus.FORBIDDEN, messages.W9);
 
-      return await this._groupsDao.removeMember(
+      const leaveRes = await this._groupsDao.removeMember(
         new Types.ObjectId(groupId),
         new Types.ObjectId(claims.userId)
       );
+      if (leaveRes.code === HttpStatus.OK) {
+        await this.createSystemMessage(groupId, claims, `${claims.name} left`);
+      }
+      return leaveRes;
     } catch (error) {
       this._loggerSvc.error(__filename, this.leaveGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
@@ -257,7 +295,10 @@ export class GroupsService implements GroupsAbstractSvc {
 
         const name = userRes.data.name;
         const res = await this._groupsDao.addMember(groupObjectId, new Types.ObjectId(id), name);
-        if (res.code === HttpStatus.CREATED) return { id, ok: true };
+        if (res.code === HttpStatus.CREATED) {
+          await this.createSystemMessage(groupId, claims, `${claims.name} added ${name}`);
+          return { id, ok: true };
+        }
         return { id, ok: false, reason: res.message || 'failed' };
       });
 
@@ -399,12 +440,20 @@ export class GroupsService implements GroupsAbstractSvc {
       if (userRes.code !== HttpStatus.OK) return userRes;
 
       // 5. Apply ownership transfer
-      return await this._groupsDao.transferGroupOwnership(
+      const transferRes = await this._groupsDao.transferGroupOwnership(
         groupObjectId,
         new Types.ObjectId(claims.userId),
         newOwnerObjectId,
         userRes.data.name
       );
+      if (transferRes.code === HttpStatus.OK) {
+        await this.createSystemMessage(
+          groupId,
+          claims,
+          `${claims.name} made ${userRes.data.name} the group administrator`
+        );
+      }
+      return transferRes;
     } catch (error) {
       this._loggerSvc.error(__filename, this.transferGroupOwnership.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);

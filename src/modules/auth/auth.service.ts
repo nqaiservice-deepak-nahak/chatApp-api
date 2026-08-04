@@ -88,8 +88,7 @@ export class AuthService implements AuthAbstractSvc {
       const {
         accessTokenSecret,
         accessTokenExpiresIn,
-        refreshTokenSecret,
-        refreshTokenExpiresIn
+        refreshTokenSecret
       } = this._appConfigSvc.get(AppConfig.JWT);
 
       const payload = await this._jwtService.verifyAsync(body.refreshToken, {
@@ -101,14 +100,11 @@ export class AuthService implements AuthAbstractSvc {
         { secret: accessTokenSecret, expiresIn: accessTokenExpiresIn as any }
       );
 
-      const newRefreshToken = await this._jwtService.signAsync(
-        { userId: payload.userId, name: payload.name, email: payload.email },
-        { secret: refreshTokenSecret, expiresIn: refreshTokenExpiresIn as any }
-      );
-
       return createResponse(HttpStatus.OK, messages.S15, {
         accessToken: newAccessToken,
-        refreshToken: newRefreshToken
+        // Keep the original token so its original `exp` remains the hard
+        // session boundary. Refreshing access must not extend the session.
+        refreshToken: body.refreshToken
       });
     } catch (error) {
       this._loggerSvc.error(__filename, this.refreshToken.name, HttpStatus.UNAUTHORIZED, (error as Error).message);
