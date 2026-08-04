@@ -46,6 +46,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly _groupNotificationService: GroupNotificationService
   ) {
     this._groupNotificationService.on('groupDeleted', this.handleGroupDeleted.bind(this));
+    this._groupNotificationService.on('groupSystemMessage', this.handleGroupSystemMessage.bind(this));
   }
 
   async handleConnection(client: Socket) {
@@ -287,6 +288,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const msg = err instanceof Error ? err.message : String(err);
       this._loggerSvc.error(__filename, 'handleGroupDeleted', HttpStatus.INTERNAL_SERVER_ERROR, msg);
     }
+  }
+
+  private handleGroupSystemMessage(groupId: string, message: unknown) {
+    if (!groupId || !this.server) return;
+    this.server.to(groupId).emit('newMessage', message);
+    this.server.to(groupId).emit('groupPresenceRefresh', { groupId });
   }
 
   //#region send Private Message
