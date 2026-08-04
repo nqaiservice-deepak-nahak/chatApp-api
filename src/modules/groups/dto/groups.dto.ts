@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsIn,
@@ -12,12 +12,14 @@ import {
   ArrayUnique,
   Max,
   MaxLength,
-  Min
+  Min,
+  ArrayNotEmpty
 } from 'class-validator';
 import { messageFactory, messages } from '../../../shared/messages.shared';
 
 class CreateGroupDto {
   @ApiProperty()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsNotEmpty({ message: messageFactory(messages.W2, ['Group name']) })
   @IsString({ message: messageFactory(messages.W1, ['group name']) })
   @MaxLength(150, { message: messageFactory(messages.W4, ['Group name', '150']) })
@@ -25,6 +27,7 @@ class CreateGroupDto {
 
   @ApiProperty({ required: false })
   @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString({ message: messageFactory(messages.W1, ['description']) })
   @MaxLength(1000, { message: messageFactory(messages.W4, ['Description', '1000']) })
   readonly description?: string;
@@ -46,6 +49,7 @@ class CreateGroupDto {
 class AddGroupMembersDto {
   @ApiProperty({ type: [String] })
   @IsNotEmpty({ message: messageFactory(messages.W2, ['memberIds']) })
+  @ArrayNotEmpty({ message: messageFactory(messages.W2, ['memberIds']) })
   @IsArray()
   @ArrayUnique()
   @ArrayMaxSize(100)
@@ -55,6 +59,7 @@ class AddGroupMembersDto {
 
 class SearchPublicGroupsDto {
   @ApiProperty()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsNotEmpty({ message: messageFactory(messages.W2, ['searchData']) })
   @IsString({ message: messageFactory(messages.W1, ['searchData']) })
   @MaxLength(150, { message: messageFactory(messages.W4, ['Search text', '150']) })
@@ -88,6 +93,7 @@ class PaginationDto {
 class PaginatedSearchDto extends PaginationDto {
   @ApiProperty({ required: false })
   @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
   @IsString({ message: messageFactory(messages.W1, ['searchData']) })
   @MaxLength(150, { message: messageFactory(messages.W4, ['Search text', '150']) })
   readonly searchData?: string;

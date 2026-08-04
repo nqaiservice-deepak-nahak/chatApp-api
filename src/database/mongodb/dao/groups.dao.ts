@@ -1,6 +1,6 @@
 import AppLogger from '@app/core/loggers/app-logger';
 import { AppResponse, createResponse } from '@app/shared/app-response.shared';
-import { messages } from '@app/shared/messages.shared';
+import { messageFactory, messages } from '@app/shared/messages.shared';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import { GroupMembers_Keys, Groups_Keys, IGroup, IGroupMember, IMessage, Messages_Keys } from '../../schemas';
@@ -9,6 +9,7 @@ import { Collections } from '../connection/collections.mongo';
 import { MongoConstants } from '../connection/constants.mongo';
 import { AbstractMessagesDao } from '../abstract/messages.abstract';
 import { currentDate } from '@app/core/utils/timestamp-util';
+import { escapeRegex } from '@app/core/utils/regex.util';
 
 @Injectable()
 export class GroupsDao implements AbstractGroupsDao {
@@ -24,13 +25,36 @@ export class GroupsDao implements AbstractGroupsDao {
     return `group:${groupId}`;
   }
 
+
   //#region Create Group
   async createGroup(groupInfo: IGroup): Promise<AppResponse> {
     try {
-      const group = new this._groupsSchema(groupInfo);
+      const normalizedName =
+        typeof groupInfo.name === 'string' ? groupInfo.name.trim() : '';
+
+      const existingGroup = await this._groupsSchema
+        .findOne({
+          [Groups_Keys.CreatedBy]: groupInfo.createdBy,
+          [Groups_Keys.Name]: normalizedName
+        })
+        .collation({ locale: 'en', strength: 2 })
+        .lean();
+
+      if (existingGroup) {
+        return createResponse(HttpStatus.CONFLICT, messages.W17, null);
+      }
+
+      const group = new this._groupsSchema({
+        ...groupInfo,
+        [Groups_Keys.Name]: normalizedName
+      });
+
       await group.save();
       return createResponse(HttpStatus.CREATED, messages.S6, group);
     } catch (error) {
+      if (error?.code === 11000) {
+        return createResponse(HttpStatus.CONFLICT, messages.W17, null);
+      }
       this._loggerSvc.error(__filename, this.createGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
     }
@@ -42,7 +66,7 @@ export class GroupsDao implements AbstractGroupsDao {
     try {
       if (!Types.ObjectId.isValid(groupId)) return createResponse(HttpStatus.BAD_REQUEST, messages.W11, null);
       const group = await this._groupsSchema.findById(groupId);
-      if (!group) return createResponse(HttpStatus.NOT_FOUND, messages.W5, null);
+      if (!group) return createResponse(HttpStatus.NOT_FOUND,messageFactory(messages.W5,['Group']), null);
       return createResponse(HttpStatus.OK, messages.S3, group);
     } catch (error) {
       this._loggerSvc.error(__filename, this.findGroupById.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
@@ -63,7 +87,10 @@ export class GroupsDao implements AbstractGroupsDao {
 
       const query: any = { [Groups_Keys.id]: { $in: groupIds } };
       if (search) {
-        query[Groups_Keys.Name] = { $regex: search, $options: 'i' };
+        query[Groups_Keys.Name] = {
+          $regex: escapeRegex(search),
+          $options: 'i'
+        };
       }
 
       // Count BEFORE pagination
@@ -137,7 +164,7 @@ export class GroupsDao implements AbstractGroupsDao {
         [Groups_Keys.Type]: 'public'
       };
       if (search) {
-        query[Groups_Keys.Name] = { $regex: search, $options: 'i' };
+        query[Groups_Keys.Name] = { $regex: escapeRegex(search), $options: 'i' };
       }
 
       const totalCount = await this._groupsSchema.countDocuments(query);
@@ -169,7 +196,7 @@ export class GroupsDao implements AbstractGroupsDao {
         .find({
           [Groups_Keys.id]: { $nin: joinedGroupIds },
           [Groups_Keys.Type]: 'public',
-          [Groups_Keys.Name]: { $regex: query, $options: 'i' }
+          [Groups_Keys.Name]: { $regex: escapeRegex(query), $options: 'i' }
         })
         .sort({ [Groups_Keys.CreatedOn]: -1 });
 
@@ -215,6 +242,26 @@ export class GroupsDao implements AbstractGroupsDao {
     }
   }
   //#endregion Add Member
+
+  //#region Remove Member (leave group)
+  async removeMember(groupId: Types.ObjectId, userId: Types.ObjectId): Promise<AppResponse> {
+    try {
+      const result = await this._groupMembersSchema.deleteOne({
+        [GroupMembers_Keys.GroupId]: groupId,
+        [GroupMembers_Keys.UserId]: userId
+      });
+
+      if (result.deletedCount === 0) {
+        return createResponse(HttpStatus.FORBIDDEN, messages.W9, null);
+      }
+
+      return createResponse(HttpStatus.OK, messages.S14, { groupId: groupId.toString() });
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.removeMember.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Remove Member
 
   //#region Get Member Count
   async getMemberCount(groupId: Types.ObjectId): Promise<AppResponse> {
@@ -315,7 +362,7 @@ export class GroupsDao implements AbstractGroupsDao {
         _id: { $nin: Array.from(excludeIds).map((s) => new Types.ObjectId(s)) }
       };
       if (search) {
-        const regex = { $regex: search, $options: 'i' };
+        const regex = { $regex: escapeRegex(search), $options: 'i' };
         query.$or = [{ name: regex }, { email: regex }];
       }
 
@@ -383,12 +430,15 @@ export class GroupsDao implements AbstractGroupsDao {
   //#region Transfer Group Ownership
   async transferGroupOwnership(
     groupId: Types.ObjectId,
+    currentOwnerId: Types.ObjectId,
     newOwnerId: Types.ObjectId,
     newOwnerName: string
   ): Promise<AppResponse> {
     try {
       const updated = await this._groupsSchema.findOneAndUpdate(
-        { [Groups_Keys.id]: groupId },
+        { [Groups_Keys.id]: groupId,
+           [Groups_Keys.CreatedBy]: currentOwnerId
+         },
         {
           $set: {
             [Groups_Keys.CreatedBy]: newOwnerId,
@@ -398,7 +448,7 @@ export class GroupsDao implements AbstractGroupsDao {
         { new: true }
       );
 
-      if (!updated) return createResponse(HttpStatus.NOT_FOUND, messages.W5, null);
+      if (!updated) return createResponse(HttpStatus.FORBIDDEN,messages.W13, null);
       return createResponse(HttpStatus.OK, messages.S13, updated);
     } catch (error) {
       this._loggerSvc.error(__filename, this.transferGroupOwnership.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);

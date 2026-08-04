@@ -6,6 +6,7 @@ import { ResponseHandler } from '@app/core/middleware/response-handler';
 import { setUpSwagger } from '@app/core/swagger/doc.swagger';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import * as express from 'express';
 
 /**
  * Core bootstrap. All cross-cutting app-level wiring (prefix, CORS, helmet,
@@ -19,10 +20,14 @@ export default async function bootstrap(app: INestApplication, appConfigSvcObj: 
   /*security headers*/
   app.use(helmet());
 
+  /*limit request body size*/
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
   /*CORS - allow the configured frontend origin*/
   const { uiUrl } = appConfigSvcObj.get(AppConfig.APP);
   app.enableCors({
-    origin: '*',
+    origin: [uiUrl],
     credentials: true
   });
 

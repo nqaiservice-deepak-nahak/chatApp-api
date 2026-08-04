@@ -97,6 +97,14 @@ export class GroupsController {
   }
   //#endregion Mark Group As Read
 
+  //#region Leave Group
+  @Delete(':groupId/leave')
+  @ApiOperation({summary:'Leave a group.'})
+  async leaveGroup(@Param('groupId') groupId: string, @CurrentUser() claims: AtPayload): Promise<AppResponse> {
+    return await this._groupsService.leaveGroup(groupId, claims);
+  }
+  //#endregion Leave Group
+
   //#region Delete Group
   @Delete(':groupId')
   @ApiOperation({summary:"Delete a group (creator only)."})
