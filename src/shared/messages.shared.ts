@@ -23,6 +23,8 @@ const enum messages {
   S11 = 'Message sent successfully.',
   S12 = 'Group deleted successfully.',
   S13 = 'Group ownership transferred successfully.',
+  S15 = 'Token refreshed successfully.',
+  S14 = 'Left group successfully.',
 
   /*Warning messages : Start with Wn*/
   W1 = 'Please provide a valid ARG0!',
@@ -39,6 +41,11 @@ const enum messages {
   W12 = 'Authorization token is required.',
   W13 = 'Only the group creator can perform this action.',
   W14 = 'The target user must be a member of the group first.',
+  W15 = "You are already the group owner.",
+  W16 = "Cannot join a private group.",
+  W17 = "You already have a group with this name.",
+  W18 = 'Only group members can view the details of a private group.',
+  W19 = 'Cannot able to give ownership to the member who is not in the group',
 
   /*Error messages : Start with En*/
   E1 = 'Application failed to start: ARG0',

@@ -8,13 +8,16 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { AddGroupMembersDto, CreateGroupDto, PaginatedSearchDto, SearchPublicGroupsDto, TransferGroupOwnershipDto } from './dto/groups.dto';
 import { GroupsAbstractSvc } from './groups.abstract';
+import { GroupType } from '@app/database/schemas';
+import { GroupNotificationService } from '@app/modules/socket/group-notification.service';
 
 @Injectable()
 export class GroupsService implements GroupsAbstractSvc {
   constructor(
     private readonly _loggerSvc: AppLogger,
     private readonly _groupsDao: AbstractGroupsDao,
-    private readonly _authDao: AbstractAuthDao
+    private readonly _authDao: AbstractAuthDao,
+    private readonly _groupNotificationService: GroupNotificationService
   ) { }
 
   async getMemberUserIds(groupId: string): Promise<AppResponse> {
@@ -97,7 +100,7 @@ export class GroupsService implements GroupsAbstractSvc {
   }
   //#endregion Get Available Groups
 
-//#region Search Public Groups
+  //#region Search Public Groups
   async searchPublicGroups(body: SearchPublicGroupsDto, claims: AtPayload): Promise<AppResponse> {
     try {
       const searchTerm = body.searchData.trim();
@@ -118,8 +121,13 @@ export class GroupsService implements GroupsAbstractSvc {
       const groupRes = await this._groupsDao.findGroupById(groupId);
       if (groupRes.code !== HttpStatus.OK) return groupRes;
 
-      const memberCountRes = await this._groupsDao.getMemberCount(new Types.ObjectId(groupId));
       const membershipRes = await this._groupsDao.isMember(new Types.ObjectId(groupId), new Types.ObjectId(claims.userId));
+
+      if (groupRes.data.type === GroupType.Private && !membershipRes.data) {
+        return createResponse(HttpStatus.FORBIDDEN, messages.W18);
+      }
+
+      const memberCountRes = await this._groupsDao.getMemberCount(new Types.ObjectId(groupId));
 
       return createResponse(HttpStatus.OK, messages.S9, {
         ...groupRes.data.toObject(),
@@ -143,6 +151,11 @@ export class GroupsService implements GroupsAbstractSvc {
       const existingMembership = await this._groupsDao.isMember(new Types.ObjectId(groupId), new Types.ObjectId(claims.userId));
       if (existingMembership.data) return createResponse(HttpStatus.CONFLICT, messages.W8);
 
+      if (groupRes.data.type === GroupType.Private) {
+        return createResponse(HttpStatus.FORBIDDEN, messages.W16);
+      }
+
+
       return await this._groupsDao.addMember(new Types.ObjectId(groupId), new Types.ObjectId(claims.userId), claims.name);
     } catch (error) {
       this._loggerSvc.error(__filename, this.joinGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
@@ -150,6 +163,33 @@ export class GroupsService implements GroupsAbstractSvc {
     }
   }
   //#endregion Join Group
+
+  //#region Leave Group
+  async leaveGroup(groupId: string, claims: AtPayload): Promise<AppResponse> {
+    try {
+      if (!Types.ObjectId.isValid(groupId)) {
+        return createResponse(HttpStatus.BAD_REQUEST, messages.W11);
+      }
+
+      const groupRes = await this._groupsDao.findGroupById(groupId);
+      if (groupRes.code !== HttpStatus.OK) return groupRes;
+
+      const membershipRes = await this._groupsDao.isMember(
+        new Types.ObjectId(groupId),
+        new Types.ObjectId(claims.userId)
+      );
+      if (!membershipRes.data) return createResponse(HttpStatus.FORBIDDEN, messages.W9);
+
+      return await this._groupsDao.removeMember(
+        new Types.ObjectId(groupId),
+        new Types.ObjectId(claims.userId)
+      );
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.leaveGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
+      return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
+    }
+  }
+  //#endregion Leave Group
 
   //#region Verify Membership (used by the socket gateway)
   async verifyMembership(groupId: string, userId: string): Promise<AppResponse> {
@@ -189,7 +229,7 @@ export class GroupsService implements GroupsAbstractSvc {
       }
 
       // 3. Dedupe + exclude the caller from being added to their own group
-      const uniqueIds = Array.from(new Set(dto.memberIds)).filter((id) => id !== claims.userId);
+      const uniqueIds = Array.from(new Set(dto.memberIds));
 
       if (uniqueIds.length === 0) {
         return createResponse(HttpStatus.OK, messages.S7, { added: 0, results: [] });
@@ -199,6 +239,11 @@ export class GroupsService implements GroupsAbstractSvc {
       const groupObjectId = new Types.ObjectId(groupId);
       const addPromises = uniqueIds.map(async (id) => {
         if (!Types.ObjectId.isValid(id)) return { id, ok: false, reason: 'invalid id' };
+
+        if (id === claims.userId) {
+          return {
+            id,ok: false,reason: 'Group creator is already a member.'};
+        }
 
         const userRes = await this._authDao.findUserById(id);
         if (userRes.code !== HttpStatus.OK) return { id, ok: false, reason: 'user not found' };
@@ -294,10 +339,16 @@ export class GroupsService implements GroupsAbstractSvc {
         return createResponse(HttpStatus.FORBIDDEN, messages.W13);
       }
 
-      return await this._groupsDao.deleteGroup(
+      const deleteRes = await this._groupsDao.deleteGroup(
         new Types.ObjectId(groupId),
         new Types.ObjectId(claims.userId)
       );
+
+      if (deleteRes.code === HttpStatus.OK) {
+        this._groupNotificationService.notifyGroupDeleted(groupId);
+      }
+
+      return deleteRes;
     } catch (error) {
       this._loggerSvc.error(__filename, this.deleteGroup.name, HttpStatus.INTERNAL_SERVER_ERROR, (error as Error).stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
@@ -316,13 +367,14 @@ export class GroupsService implements GroupsAbstractSvc {
 
       // Prevent transferring ownership to yourself
       if (body.newOwnerUserId === claims.userId) {
-        return createResponse(HttpStatus.BAD_REQUEST, messages.W1);
+        return createResponse(HttpStatus.BAD_REQUEST, messages.W15);
       }
 
       // 1. Group must exist
       const groupRes = await this._groupsDao.findGroupById(groupId);
-      if (groupRes.code !== HttpStatus.OK) return groupRes;
-
+      if (groupRes.code !== HttpStatus.OK)
+        return createResponse(HttpStatus.NOT_FOUND,messages.W19, null);
+      
       // 2. Caller must be the current creator / owner
       if (groupRes.data.createdBy.toString() !== claims.userId) {
         return createResponse(HttpStatus.FORBIDDEN, messages.W13);
@@ -342,6 +394,7 @@ export class GroupsService implements GroupsAbstractSvc {
       // 5. Apply ownership transfer
       return await this._groupsDao.transferGroupOwnership(
         groupObjectId,
+        new Types.ObjectId(claims.userId),
         newOwnerObjectId,
         userRes.data.name
       );

@@ -24,6 +24,8 @@ interface EnvConfig {
   [AppConfig.JWT]: {
     accessTokenSecret: string;
     accessTokenExpiresIn: string;
+    refreshTokenSecret: string;
+    refreshTokenExpiresIn: string;
   };
   [AppConfig.AES_KEY]:{
     aes_key:string;

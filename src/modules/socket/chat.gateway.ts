@@ -2,7 +2,9 @@ import { AppConfig, AppConfigService } from '@app/config/app-config.service';
 import AppLogger from '@app/core/loggers/app-logger';
 import { GroupsAbstractSvc } from '@app/modules/groups/groups.abstract';
 import { MessagesAbstractSvc } from '@app/modules/messages/messages.abstract';
+import { GroupNotificationService } from '@app/modules/socket/group-notification.service';
 import { AtPayload } from '@app/shared/model.shared';
+import { Types } from 'mongoose';
 import { HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -40,14 +42,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly _jwtService: JwtService,
     private readonly _appConfigSvc: AppConfigService,
     private readonly _groupsService: GroupsAbstractSvc,
-    private readonly _messagesService: MessagesAbstractSvc
-  ) { }
+    private readonly _messagesService: MessagesAbstractSvc,
+    private readonly _groupNotificationService: GroupNotificationService
+  ) {
+    this._groupNotificationService.on('groupDeleted', this.handleGroupDeleted.bind(this));
+  }
 
   async handleConnection(client: Socket) {
     try {
       const token = client.handshake.auth?.token || client.handshake.query?.token;
       if (!token) {
-        client.emit('error', { message: 'Authentication token is required.' });
+        client.emit('authFailed', { message: 'Authentication token is required.' });
         client.disconnect(true);
         return;
       }
@@ -60,7 +65,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.emit('presenceChanged', { userId: claims.userId, isOnline: true });
     } catch (error) {
       this._loggerSvc.error(__filename, this.handleConnection.name, HttpStatus.UNAUTHORIZED, error.message);
-      client.emit('error', { message: 'Invalid or expired token.' });
+      client.emit('authFailed', { message: 'Invalid or expired token.' });
       client.disconnect(true);
     }
   }
@@ -118,7 +123,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: { userId: string },
     @ConnectedSocket() client: Socket
   ) {
-    if (!client.data.claims || !data?.userId) return;
+    if (!client.data.claims) return client.emit('userPresenceFailed', { message: 'Authentication token is required.' });
+    if (!data?.userId || !Types.ObjectId.isValid(data.userId)) {
+      return client.emit('userPresenceFailed', { message: 'Invalid user id.' });
+    }
 
     const sockets = await this.server.in(`user:${data.userId}`).fetchSockets();
     client.emit('userPresence', {
@@ -135,7 +143,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket
   ) {
     const claims: AtPayload = client.data.claims;
-    if (!claims) return client.emit('error', { message: 'Authentication token is required.' });
+    if (!claims) return client.emit('joinPrivateChatFailed', { message: 'Authentication token is required.' });
+    if (!data?.userId || !Types.ObjectId.isValid(data.userId)) {
+      return client.emit('joinPrivateChatFailed', { message: 'Invalid user id.' });
+    }
 
     const roomName = this.getConversationRoomName(claims.userId, data.userId);
     client.join(roomName);
@@ -156,7 +167,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket
   ) {
     const claims: AtPayload = client.data.claims;
-    if (!claims || !data?.userId) return;
+    if (!claims) return client.emit('markPrivateChatReadFailed', { message: 'Authentication token is required.' });
+    if (!data?.userId || !Types.ObjectId.isValid(data.userId)) {
+      return client.emit('markPrivateChatReadFailed', { message: 'Invalid user id.' });
+    }
 
     const result = await this._messagesService.markDirectChatAsRead(data.userId, claims);
     if (result.code === HttpStatus.OK) {
@@ -170,11 +184,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('joinGroup')
   async handleJoinGroup(@MessageBody() data: { groupId: string }, @ConnectedSocket() client: Socket) {
     const claims: AtPayload = client.data.claims;
-    if (!claims) return client.emit('error', { message: 'Authentication token is required.' });
+    if (!claims) return client.emit('joinGroupFailed', { message: 'Authentication token is required.' });
+    if (!data?.groupId || !Types.ObjectId.isValid(data.groupId)) {
+      return client.emit('joinGroupFailed', { message: 'Invalid group id.' });
+    }
 
     const membershipRes = await this._groupsService.verifyMembership(data.groupId, claims.userId);
     if (membershipRes.code !== HttpStatus.OK) {
-      return client.emit('error', { message: membershipRes.message });
+      return client.emit('joinGroupFailed', { message: membershipRes.message });
     }
 
     client.join(data.groupId);
@@ -197,11 +214,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket
   ) {
     const claims: AtPayload = client.data.claims;
-    if (!claims) return client.emit('error', { message: 'Authentication token is required.' });
+    if (!claims) return client.emit('getGroupPresenceFailed', { message: 'Authentication token is required.' });
+    if (!data?.groupId || !Types.ObjectId.isValid(data.groupId)) {
+      return client.emit('getGroupPresenceFailed', { message: 'Invalid group id.' });
+    }
 
     const membershipRes = await this._groupsService.verifyMembership(data.groupId, claims.userId);
     if (membershipRes.code !== HttpStatus.OK) {
-      return client.emit('error', { message: membershipRes.message });
+      return client.emit('getGroupPresenceFailed', { message: membershipRes.message });
     }
 
     await this.emitGroupPresence(data.groupId, client);
@@ -209,8 +229,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   //#region Leave Group Room
   @SubscribeMessage('leaveGroup')
-  handleLeaveGroup(@MessageBody() data: { groupId: string }, @ConnectedSocket() client: Socket) {
+  async handleLeaveGroup(@MessageBody() data: { groupId: string }, @ConnectedSocket() client: Socket) {
+    const claims: AtPayload = client.data.claims;
+    if (!claims) return client.emit('leaveGroupFailed', { message: 'Authentication token is required.' });
+    if (!data?.groupId || !Types.ObjectId.isValid(data.groupId)) {
+      return client.emit('leaveGroupFailed', { message: 'Invalid group id.' });
+    }
+
+    const leaveRes = await this._groupsService.leaveGroup(data.groupId, claims);
+    if (leaveRes.code !== HttpStatus.OK) {
+      return client.emit('leaveGroupFailed', { message: leaveRes.message });
+    }
+
     client.leave(data.groupId);
+    client.emit('leftGroup', { groupId: data.groupId });
+    await this.emitGroupPresence(data.groupId);
   }
   //#endregion Leave Group Room
 
@@ -221,13 +254,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket
   ) {
     const claims: AtPayload = client.data.claims;
-    if (!claims) return client.emit('error', { message: 'Authentication token is required.' });
+    if (!claims) return client.emit('sendMessageFailed', { message: 'Authentication token is required.' });
+    if (!data?.groupId || !Types.ObjectId.isValid(data.groupId)) {
+      return client.emit('sendMessageFailed', { message: 'Invalid group id.' });
+    }
 
     if (!data?.message?.text?.trim() && !data?.message?.imagePath?.trim() && !data?.message?.files?.trim()) return;
 
     const sendRes = await this._messagesService.sendMessage(data.groupId, data.message, claims);
     if (sendRes.code !== HttpStatus.CREATED) {
-      return client.emit('error', { message: sendRes.message });
+      return client.emit('sendMessageFailed', { message: sendRes.message });
     }
 
     /*broadcast to everyone currently in the room, including the sender*/
@@ -242,6 +278,22 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
   //#endregion Send Message
 
+  private async handleGroupDeleted(groupId: string) {
+    if (!groupId || !this.server) return;
+
+    this.server.to(groupId).emit('groupDeleted', {
+      groupId,
+      message: 'This group has been deleted by the owner.'
+    });
+
+    try {
+      await this.server.in(groupId).socketsLeave(groupId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this._loggerSvc.error(__filename, 'handleGroupDeleted', HttpStatus.INTERNAL_SERVER_ERROR, msg);
+    }
+  }
+
   //#region send Private Message
   @SubscribeMessage('sendPrivateMessage')
   async handleSendPrivateMessage(
@@ -249,14 +301,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket
   ) {
     const claims: AtPayload = client.data.claims;
-    if (!claims) return client.emit('error', { message: 'Authentication token is required.' });
+    if (!claims) return client.emit('sendPrivateMessageFailed', { message: 'Authentication token is required.' });
+    if (!data?.receiverId || !Types.ObjectId.isValid(data.receiverId)) {
+      return client.emit('sendPrivateMessageFailed', { message: 'Invalid receiver id.' });
+    }
+
+    if (data.receiverId === claims.userId) {
+      return client.emit('sendPrivateMessageFailed', { message: 'You cannot send a message to yourself.' });
+    }
 
     const hasContent = !!data?.message?.text?.trim() || !!data?.message?.imagePath?.trim() || !!data?.message?.files?.trim();
-    if (!hasContent || !data?.receiverId) return;
+    if (!hasContent) return;
 
     const sendRes = await this._messagesService.sendPrivateMessage(data.receiverId, data.message, claims);
     if (sendRes.code !== HttpStatus.CREATED) {
-      return client.emit('error', { message: sendRes.message });
+      return client.emit('sendPrivateMessageFailed', { message: sendRes.message });
     }
 
     const roomName = this.getConversationRoomName(claims.userId, data.receiverId);

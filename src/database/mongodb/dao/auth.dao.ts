@@ -1,6 +1,6 @@
 import AppLogger from '@app/core/loggers/app-logger';
 import { AppResponse, createResponse } from '@app/shared/app-response.shared';
-import { messages } from '@app/shared/messages.shared';
+import { messageFactory, messages } from '@app/shared/messages.shared';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Model } from 'mongoose';
 import { IUser, Users_Keys } from '../../schemas';
@@ -18,7 +18,7 @@ export class AuthDao implements AbstractAuthDao {
   async findUserByEmail(email: string): Promise<AppResponse> {
     try {
       const user = await this._userSchema.findOne({ [Users_Keys.Email]: email.toLowerCase().trim() });
-      if (!user) return createResponse(HttpStatus.NOT_FOUND, messages.W5, null);
+      if (!user) return createResponse(HttpStatus.NOT_FOUND,messageFactory(messages.W5,['User']), null);
       return createResponse(HttpStatus.OK, messages.S3, user);
     } catch (error) {
       this._loggerSvc.error(__filename, this.findUserByEmail.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
@@ -31,7 +31,7 @@ export class AuthDao implements AbstractAuthDao {
   async findUserById(userId: string): Promise<AppResponse> {
     try {
       const user = await this._userSchema.findById(userId);
-      if (!user) return createResponse(HttpStatus.NOT_FOUND, messages.W5, null);
+      if (!user) return createResponse(HttpStatus.NOT_FOUND, 'User not found', null);
       return createResponse(HttpStatus.OK, messages.S3, user);
     } catch (error) {
       this._loggerSvc.error(__filename, this.findUserById.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
@@ -46,12 +46,20 @@ export class AuthDao implements AbstractAuthDao {
       const user = new this._userSchema({ ...userInfo, [Users_Keys.Email]: userInfo.email.toLowerCase().trim() });
       await user.save();
       return createResponse(HttpStatus.CREATED, messages.S4, user);
-    } catch (error) {
+    } catch (error: any) {
+      // Duplicate email
+      if (error?.code === 11000) {
+        return createResponse(HttpStatus.CONFLICT, messages.W6);
+      }
       this._loggerSvc.error(__filename, this.createUser.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
     }
   }
   //#endregion Create User
+
+  private escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
 
   //#region findAllUsersExcept
   async findAllUsersExcept(
@@ -60,13 +68,23 @@ export class AuthDao implements AbstractAuthDao {
     options: { search?: string; offset: number; limit: number } = { offset: 0, limit: 50 }
   ): Promise<AppResponse> {
     try {
-      const search = (options.search || '').trim();
       const idsToExclude = Array.from(new Set([userId, ...excludedIds]));
+      const search = (options.search || '').trim();
 
       const query: any = { _id: { $nin: idsToExclude } };
+
       if (search) {
-        const regex = { $regex: search, $options: 'i' };
-        query.$or = [{ name: regex }, { email: regex }];
+        const escapedSearch = this.escapeRegex(search);
+
+        const regex = {
+          $regex: escapedSearch,
+          $options: 'i',
+        };
+
+        query.$or = [
+          { name: regex },
+          { email: regex },
+        ];
       }
 
       const totalCount = await this._userSchema.countDocuments(query);

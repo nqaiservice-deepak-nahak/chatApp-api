@@ -25,8 +25,8 @@ interface IUsersModel extends IUser, Document {}
 
 //#region Schema
 const UsersSchema = new Schema<IUsersModel>({
-  [Users_Keys.Name]: { type: SchemaTypes.String, required: true },
-  [Users_Keys.Email]: { type: SchemaTypes.String, required: true },
+  [Users_Keys.Name]: { type: SchemaTypes.String, required: true, trim:true },
+  [Users_Keys.Email]: { type: SchemaTypes.String, required: true, trim:true, lowercase:true },
   [Users_Keys.HashedPassword]: { type: SchemaTypes.String, required: true },
   [Users_Keys.CreatedOn]: { type: SchemaTypes.String, required: true, default: () => currentDate() }
 });

@@ -10,7 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { AuthAbstractSvc } from './auth.abstract';
-import { LoginDto, PaginatedSearchDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, PaginatedSearchDto, RegisterDto, RefreshTokenDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService implements AuthAbstractSvc {
@@ -57,21 +57,65 @@ export class AuthService implements AuthAbstractSvc {
       const isMatch = await bcrypt.compare(loginInfo.password, user.hashedPassword);
       if (!isMatch) return createResponse(HttpStatus.UNAUTHORIZED, messages.W7);
 
-      const { accessTokenSecret, accessTokenExpiresIn } = this._appConfigSvc.get(AppConfig.JWT);
+      const { accessTokenSecret, accessTokenExpiresIn, refreshTokenSecret, refreshTokenExpiresIn } = this._appConfigSvc.get(AppConfig.JWT);
       const payload = { userId: user._id.toString(), name: user.name, email: user.email };
       const accessToken = await this._jwtService.signAsync(payload, {
         secret: accessTokenSecret,
         expiresIn: accessTokenExpiresIn as any
       });
+      const refreshToken = await this._jwtService.signAsync(payload, {
+        secret: refreshTokenSecret,
+        expiresIn: refreshTokenExpiresIn as any
+      });
       const { aes_key } = this._appConfigSvc.get(AppConfig.AES_KEY);
 
-      return createResponse(HttpStatus.OK, messages.S5, { accessToken,aesKey:aes_key, user: this._toSafeUser(user) });
+      return createResponse(HttpStatus.OK, messages.S5, {
+        accessToken,
+        refreshToken,
+        aesKey: aes_key,
+        user: this._toSafeUser(user)
+      });
     } catch (error) {
       this._loggerSvc.error(__filename, this.login.name, HttpStatus.INTERNAL_SERVER_ERROR, error.stack);
       return createResponse(HttpStatus.INTERNAL_SERVER_ERROR, messages.E2);
     }
   }
   //#endregion Login
+
+  //#region Refresh Token
+  async refreshToken(body: RefreshTokenDto): Promise<AppResponse> {
+    try {
+      const {
+        accessTokenSecret,
+        accessTokenExpiresIn,
+        refreshTokenSecret,
+        refreshTokenExpiresIn
+      } = this._appConfigSvc.get(AppConfig.JWT);
+
+      const payload = await this._jwtService.verifyAsync(body.refreshToken, {
+        secret: refreshTokenSecret
+      });
+
+      const newAccessToken = await this._jwtService.signAsync(
+        { userId: payload.userId, name: payload.name, email: payload.email },
+        { secret: accessTokenSecret, expiresIn: accessTokenExpiresIn as any }
+      );
+
+      const newRefreshToken = await this._jwtService.signAsync(
+        { userId: payload.userId, name: payload.name, email: payload.email },
+        { secret: refreshTokenSecret, expiresIn: refreshTokenExpiresIn as any }
+      );
+
+      return createResponse(HttpStatus.OK, messages.S15, {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken
+      });
+    } catch (error) {
+      this._loggerSvc.error(__filename, this.refreshToken.name, HttpStatus.UNAUTHORIZED, (error as Error).message);
+      return createResponse(HttpStatus.UNAUTHORIZED, messages.W10);
+    }
+  }
+  //#endregion Refresh Token
 
   //#region Get Profile
   async getProfile(userId: string): Promise<AppResponse> {
