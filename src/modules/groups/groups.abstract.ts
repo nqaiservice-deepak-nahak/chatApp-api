@@ -10,6 +10,7 @@ export abstract class GroupsAbstractSvc {
   abstract searchPublicGroups(body: SearchPublicGroupsDto, claims: AtPayload): Promise<AppResponse>;
   abstract getGroupDetails(groupId: string, claims: AtPayload): Promise<AppResponse>;
   abstract joinGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
+  abstract leaveGroup(groupId: string, claims: AtPayload): Promise<AppResponse>;
   /** Internal helper used by the socket gateway to authorize room joins. */
   abstract verifyMembership(groupId: string, userId: string): Promise<AppResponse>;
   /** Internal helper used by the socket gateway to notify group members. */

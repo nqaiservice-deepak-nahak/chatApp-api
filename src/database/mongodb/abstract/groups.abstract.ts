@@ -29,10 +29,12 @@ export abstract class AbstractGroupsDao {
     callerUserId: Types.ObjectId,
     options: { search?: string; offset: number; limit: number }
   ): Promise<AppResponse>;
+  abstract removeMember(groupId: Types.ObjectId, userId: Types.ObjectId): Promise<AppResponse>;
   abstract deleteGroup(groupId: Types.ObjectId, creatorId: Types.ObjectId): Promise<AppResponse>;
   /** Atomically update createdBy / createdByName for a group. */
   abstract transferGroupOwnership(
     groupId: Types.ObjectId,
+    currentOwnerId: Types.ObjectId,
     newOwnerId: Types.ObjectId,
     newOwnerName: string
   ): Promise<AppResponse>;

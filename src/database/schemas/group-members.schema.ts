@@ -34,7 +34,7 @@ interface IGroupMembersModel extends IGroupMember, Document { }
 const GroupMembersSchema = new Schema<IGroupMembersModel>({
   [GroupMembers_Keys.GroupId]: { type: SchemaTypes.ObjectId, ref: Collections.Groups, required: true },
   [GroupMembers_Keys.UserId]: { type: SchemaTypes.ObjectId, ref: Collections.Users, required: true },
-  [GroupMembers_Keys.UserName]: { type: SchemaTypes.String, required: true },
+  [GroupMembers_Keys.UserName]: { type: SchemaTypes.String, required: true, trim: true },
   [GroupMembers_Keys.JoinedAt]: { type: SchemaTypes.String, required: true, default: () => currentDate() },
   [GroupMembers_Keys.LastReadAt]: { type: SchemaTypes.String, required: false }
 });

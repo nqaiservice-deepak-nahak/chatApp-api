@@ -29,13 +29,13 @@ interface IGroup {
   [Groups_Keys.CreatedOn]: string;
 }
 
-interface IGroupsModel extends IGroup, Document {}
+interface IGroupsModel extends IGroup, Document { }
 //#endregion Interfaces
 
 //#region Schema
 const GroupsSchema = new Schema<IGroupsModel>({
-  [Groups_Keys.Name]: { type: SchemaTypes.String, required: true },
-  [Groups_Keys.Description]: { type: SchemaTypes.String, required: false, default: '' },
+  [Groups_Keys.Name]: { type: SchemaTypes.String, required: true, trim: true},
+  [Groups_Keys.Description]: { type: SchemaTypes.String, required: false, default: '', trim: true},
   [Groups_Keys.Type]: {
     type: SchemaTypes.String,
     required: true,
@@ -43,10 +43,11 @@ const GroupsSchema = new Schema<IGroupsModel>({
     default: GroupType.Public
   },
   [Groups_Keys.CreatedBy]: { type: SchemaTypes.ObjectId, ref: Collections.Users, required: true },
-  [Groups_Keys.CreatedByName]: { type: SchemaTypes.String, required: true },
+  [Groups_Keys.CreatedByName]: { type: SchemaTypes.String, required: true, trim: true },
   [Groups_Keys.CreatedOn]: { type: SchemaTypes.String, required: true, default: () => currentDate() }
 });
 //#endregion Schema
+GroupsSchema.index({[Groups_Keys.CreatedBy]: 1,[Groups_Keys.Name]: 1},{unique: true, collation:{locale:"en", strength:2}});
 
 const createGroupsSchema = (conn: Connection) => conn.model<IGroupsModel>(Collections.Groups, GroupsSchema, Collections.Groups);
 

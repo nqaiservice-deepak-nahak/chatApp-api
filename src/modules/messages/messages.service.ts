@@ -160,7 +160,7 @@ export class MessagesService implements MessagesAbstractSvc {
       // Req 10: Verify the receiver actually exists before saving the message.
       const receiverRes = await this._authDao.findUserById(receiverId);
       if (receiverRes.code !== HttpStatus.OK) {
-        return createResponse(HttpStatus.NOT_FOUND, messages.W5);
+        return createResponse(HttpStatus.NOT_FOUND, messageFactory(messages.W5,['User']));
       }
 
       // Only `text` is populated for now; imagePath/files are carried through as-is

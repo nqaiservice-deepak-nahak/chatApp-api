@@ -5,7 +5,7 @@ import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AppResponse } from '../../shared/app-response.shared';
 import { AuthAbstractSvc } from './auth.abstract';
-import { LoginDto, PaginatedSearchDto, RegisterDto } from './dto/auth.dto';
+import { LoginDto, PaginatedSearchDto, RegisterDto, RefreshTokenDto } from './dto/auth.dto';
 
 @Controller('auth')
 @ApiTags('Auth')
@@ -22,11 +22,19 @@ export class AuthController {
 
   //#region Login
   @Post('login')
-  @ApiOperation({summary:'Log in and receive an access token.'})
+  @ApiOperation({summary:'Log in and receive an access token and refresh token.'})
   async login(@Body() loginInfo: LoginDto): Promise<AppResponse> {
     return await this._authService.login(loginInfo);
   }
   //#endregion Login
+
+  //#region Refresh Token
+  @Post('refresh')
+  @ApiOperation({summary:'Refresh the access token using a refresh token.'})
+  async refreshToken(@Body() body: RefreshTokenDto): Promise<AppResponse> {
+    return await this._authService.refreshToken(body);
+  }
+  //#endregion Refresh Token
 
   //#region Get My Profile
   @Authorize()
