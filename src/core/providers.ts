@@ -11,7 +11,7 @@ const getProviders = (): any[] => {
     return [AppConfigService, AppLogger, GroupNotificationService, { provide: APP_GUARD, useClass: AuthGuard }];
   },
   importProviders = (): any[] => {
-    return [ConfigModule.forRoot({ envFilePath:'.env.dev' }), DatabaseModule, JwtModule.register({ global: true })];
+    return [ConfigModule.forRoot({ envFilePath:'.env.prod' }), DatabaseModule, JwtModule.register({ global: true })];
   },
   exportProviders = (): any[] => {
     return [AppConfigService, AppLogger, DatabaseModule, JwtModule, GroupNotificationService];
