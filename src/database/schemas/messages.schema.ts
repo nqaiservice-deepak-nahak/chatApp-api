@@ -24,7 +24,7 @@ interface IMessage {
   [Messages_Keys.SenderId]: Types.ObjectId;
   [Messages_Keys.SenderName]: string;
   [Messages_Keys.Message]: string;
-  [Messages_Keys.MessageType]: "group" | "private";
+  [Messages_Keys.MessageType]: "group" | "private" | "system";
   [Messages_Keys.CreatedOn]: string;
 }
 
@@ -59,7 +59,7 @@ const MessagesSchema = new Schema<IMessagesModel>({
     type: SchemaTypes.String,
     required: true,
     default: "group",
-    enum: ["group", "private"],
+    enum: ["group", "private", "system"],
   },
   [Messages_Keys.CreatedOn]: {
     type: SchemaTypes.String,
