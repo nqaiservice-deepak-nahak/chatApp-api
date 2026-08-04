@@ -228,21 +228,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   //#region Leave Group Room
-  @SubscribeMessage('leaveGroup')
-  async handleLeaveGroup(@MessageBody() data: { groupId: string }, @ConnectedSocket() client: Socket) {
+  @SubscribeMessage('leaveGroupRoom')
+  async handleLeaveGroupRoom(@MessageBody() data: { groupId: string }, @ConnectedSocket() client: Socket) {
     const claims: AtPayload = client.data.claims;
     if (!claims) return client.emit('leaveGroupFailed', { message: 'Authentication token is required.' });
     if (!data?.groupId || !Types.ObjectId.isValid(data.groupId)) {
       return client.emit('leaveGroupFailed', { message: 'Invalid group id.' });
     }
 
-    const leaveRes = await this._groupsService.leaveGroup(data.groupId, claims);
-    if (leaveRes.code !== HttpStatus.OK) {
-      return client.emit('leaveGroupFailed', { message: leaveRes.message });
-    }
-
     client.leave(data.groupId);
-    client.emit('leftGroup', { groupId: data.groupId });
+    client.emit('leftGroupRoom', { groupId: data.groupId });
     await this.emitGroupPresence(data.groupId);
   }
   //#endregion Leave Group Room
