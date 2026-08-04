@@ -174,6 +174,13 @@ export class GroupsService implements GroupsAbstractSvc {
       const groupRes = await this._groupsDao.findGroupById(groupId);
       if (groupRes.code !== HttpStatus.OK) return groupRes;
 
+      if (groupRes.data.createdBy.toString() === claims.userId) {
+        return createResponse(
+          HttpStatus.BAD_REQUEST,
+          'The group owner must transfer ownership or delete the group before leaving.'
+        );
+      }
+
       const membershipRes = await this._groupsDao.isMember(
         new Types.ObjectId(groupId),
         new Types.ObjectId(claims.userId)
