@@ -10,7 +10,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configObj = app.get(AppConfigService);
   const logger = app.get(AppLogger);
-  const { port, environment } = configObj.get(AppConfig.APP);
+  const { port: appPort, environment } = configObj.get(AppConfig.APP);
+
+  const port = Number(process.env.PORT) || appPort;
 
   process.on('unhandledRejection', (reason: unknown) => {
     logger.error(__filename, 'unhandledRejection', HttpStatus.INTERNAL_SERVER_ERROR, reason);
@@ -19,7 +21,7 @@ async function bootstrap() {
   try {
     await coreBootstrap(app, configObj);
 
-    await app.listen(port, () => {
+    await app.listen(port,'0.0.0.0',() => {
       logger.info(__filename, bootstrap.name, HttpStatus.OK, messageFactory(messages.S1, [`${port} (${environment})`]));
     });
   } catch (err) {
