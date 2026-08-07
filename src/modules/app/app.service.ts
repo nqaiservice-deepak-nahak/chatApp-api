@@ -5,6 +5,7 @@ import { messages } from '../../shared/messages.shared';
 @Injectable()
 export class AppService {
   getHealth() {
+    console.log('Health Check');
     return createResponse(HttpStatus.OK, messages.S3, { status: 'up' });
   }
 }
