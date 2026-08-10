@@ -5,7 +5,7 @@ on:
     branches:
       - main
 
-    workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -24,7 +24,7 @@ jobs:
 
       # Step 3 - Install Dependencies
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       # Step 4 - Generate .env.prod
       - name: Generate .env.prod
