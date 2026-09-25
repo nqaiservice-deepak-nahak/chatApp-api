@@ -8,6 +8,10 @@ metadata:
 spec:
   gatewayClassName: approuting-istio
 
+  infrastructure:
+    annotations:
+      service.beta.kubernetes.io/azure-dns-label-name: "deepak-aks-api-2509"
+
   listeners:
     - name: http
       protocol: HTTP
