@@ -208,6 +208,10 @@ jobs:
 
           kubectl apply -f k8s/service.yaml
 
+          kubectl apply -f k8s/gateway.yaml
+          
+          kubectl apply -f k8s/httproute.yaml
+
 
       # --------------------------------------------------
       # Step 14 - Wait until deployment completes
