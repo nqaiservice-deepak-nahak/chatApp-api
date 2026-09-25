@@ -1,0 +1,199 @@
+name: Deploy Backend to AKS
+
+on:
+  workflow_dispatch:
+
+env:
+  RESOURCE_GROUP: rg-network-deepak
+  AKS_CLUSTER: aks-network-lab
+  ACR_NAME: acrnetworkdeepak01
+  IMAGE_NAME: backend
+
+jobs:
+  build-and-deploy:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # -----------------------------------
+      # Step 1 - Checkout repository
+      # -----------------------------------
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+
+      # -----------------------------------
+      # Step 2 - Azure Login
+      # -----------------------------------
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+
+      # -----------------------------------
+      # Step 3 - Show configuration
+      # -----------------------------------
+      - name: Verify Deployment Configuration
+        run: |
+          echo "Resource Group: $RESOURCE_GROUP"
+          echo "AKS Cluster: $AKS_CLUSTER"
+          echo "ACR Name: $ACR_NAME"
+          echo "Image Name: $IMAGE_NAME"
+
+
+      # -----------------------------------
+      # Step 4 - Get ACR login server
+      # -----------------------------------
+      - name: Get ACR Login Server
+        id: acr
+        run: |
+          LOGIN_SERVER=$(az acr show \
+            --name "$ACR_NAME" \
+            --query loginServer \
+            --output tsv)
+
+          echo "login_server=$LOGIN_SERVER" >> "$GITHUB_OUTPUT"
+
+          echo "ACR Login Server: $LOGIN_SERVER"
+
+
+      # -----------------------------------
+      # Step 5 - Login to ACR
+      # -----------------------------------
+      - name: Login to Azure Container Registry
+        run: |
+          az acr login --name "$ACR_NAME"
+
+
+      # -----------------------------------
+      # Step 6 - Build Docker image
+      # -----------------------------------
+      - name: Build Docker Image
+        run: |
+          docker build \
+            -t "${{ steps.acr.outputs.login_server }}/$IMAGE_NAME:${{ github.sha }}" \
+            .
+
+
+      # -----------------------------------
+      # Step 7 - Push Docker image
+      # -----------------------------------
+      - name: Push Docker Image
+        run: |
+          docker push \
+            "${{ steps.acr.outputs.login_server }}/$IMAGE_NAME:${{ github.sha }}"
+
+
+      # -----------------------------------
+      # Step 8 - Setup kubectl
+      # -----------------------------------
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v5
+
+
+      # -----------------------------------
+      # Step 9 - Get AKS context
+      # -----------------------------------
+      - name: Get AKS Context
+        uses: azure/aks-set-context@v5
+        with:
+          resource-group: ${{ env.RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER }}
+
+
+      # -----------------------------------
+      # Step 10 - Create Kubernetes secrets
+      # -----------------------------------
+      - name: Create Kubernetes Backend Secrets
+
+        env:
+          APP_PORT: ${{ secrets.APP_PORT }}
+          ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
+          UI_URL: ${{ secrets.UI_URL }}
+
+          MONGO_CONNECTION_STRING: ${{ secrets.MONGO_CONNECTION_STRING }}
+          MONGO_SYNC_BIT: ${{ secrets.MONGO_SYNC_BIT }}
+
+          JWT_ACCESS_TOKEN_SECRET: ${{ secrets.JWT_ACCESS_TOKEN_SECRET }}
+          JWT_ACCESS_TOKEN_EXPIRES_IN: ${{ secrets.JWT_ACCESS_TOKEN_EXPIRES_IN }}
+
+          JWT_REFRESH_TOKEN_SECRET: ${{ secrets.JWT_REFRESH_TOKEN_SECRET }}
+          JWT_REFRESH_TOKEN_EXPIRES_IN: ${{ secrets.JWT_REFRESH_TOKEN_EXPIRES_IN }}
+
+          AES_KEY: ${{ secrets.AES_KEY }}
+
+          LOG_LEVEL: ${{ secrets.LOG_LEVEL }}
+
+        run: |
+          kubectl create secret generic backend-secrets \
+            --from-literal="APP_PORT=$APP_PORT" \
+            --from-literal="ENVIRONMENT=$ENVIRONMENT" \
+            --from-literal="UI_URL=$UI_URL" \
+            --from-literal="MONGO_CONNECTION_STRING=$MONGO_CONNECTION_STRING" \
+            --from-literal="MONGO_SYNC_BIT=$MONGO_SYNC_BIT" \
+            --from-literal="JWT_ACCESS_TOKEN_SECRET=$JWT_ACCESS_TOKEN_SECRET" \
+            --from-literal="JWT_ACCESS_TOKEN_EXPIRES_IN=$JWT_ACCESS_TOKEN_EXPIRES_IN" \
+            --from-literal="JWT_REFRESH_TOKEN_SECRET=$JWT_REFRESH_TOKEN_SECRET" \
+            --from-literal="JWT_REFRESH_TOKEN_EXPIRES_IN=$JWT_REFRESH_TOKEN_EXPIRES_IN" \
+            --from-literal="AES_KEY=$AES_KEY" \
+            --from-literal="LOG_LEVEL=$LOG_LEVEL" \
+            --dry-run=client \
+            -o yaml \
+            | kubectl apply -f -
+
+
+      # -----------------------------------
+      # Step 11 - Replace image placeholder
+      # -----------------------------------
+      - name: Prepare Deployment Manifest
+        run: |
+          IMAGE="${{ steps.acr.outputs.login_server }}/$IMAGE_NAME:${{ github.sha }}"
+
+          sed "s|__BACKEND_IMAGE__|$IMAGE|g" \
+            k8s/deployment.yaml \
+            > k8s/deployment-final.yaml
+
+
+      # -----------------------------------
+      # Step 12 - Deploy to AKS
+      # -----------------------------------
+      - name: Apply Kubernetes Resources
+        run: |
+          kubectl apply -f k8s/deployment-final.yaml
+          kubectl apply -f k8s/service.yaml
+
+
+      # -----------------------------------
+      # Step 13 - Wait for backend rollout
+      # -----------------------------------
+      - name: Wait for Deployment
+        run: |
+          kubectl rollout status \
+            deployment/backend-deployment \
+            --timeout=300s
+
+
+      # -----------------------------------
+      # Step 14 - Show deployed resources
+      # -----------------------------------
+      - name: Show AKS Resources
+        run: |
+          echo "----------- PODS -----------"
+          kubectl get pods -o wide
+
+          echo "----------- SERVICES -----------"
+          kubectl get services
+
+          echo "----------- DEPLOYMENT -----------"
+          kubectl get deployment backend-deployment
+
+
+      # -----------------------------------
+      # Step 15 - Azure Logout
+      # -----------------------------------
+      - name: Azure Logout
+        if: always()
+        run: |
+          az logout
