@@ -209,8 +209,12 @@ jobs:
           kubectl apply -f k8s/service.yaml
 
           kubectl apply -f k8s/gateway.yaml
-          
+
           kubectl apply -f k8s/httproute.yaml
+
+          kubectl apply -f k8s/clusterissuer.yaml
+          
+          kubectl apply -f k8s/certificate.yaml
 
 
       # --------------------------------------------------
