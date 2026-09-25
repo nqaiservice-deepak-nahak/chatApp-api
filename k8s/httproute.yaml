@@ -8,6 +8,10 @@ metadata:
 spec:
   parentRefs:
     - name: backend-gateway
+      sectionName: https
+
+  hostnames:
+    - deepak-aks-api-2509.centralindia.cloudapp.azure.com
 
   rules:
     - matches:
